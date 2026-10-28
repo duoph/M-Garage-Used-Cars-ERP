@@ -7,13 +7,13 @@ import { useAuth, useCurrentUser } from "@/hooks/use-auth";
 import { formatDateTime, inRange, resolvePreset, type DateRange } from "@/lib/utils/dates";
 import { formatINR } from "@/lib/utils/money";
 import { ENTITY_TYPES, type ActivityLog, type EntityType } from "@/types";
-import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { PageHeader } from "@/components/shared/page-header";
 import { SearchInput } from "@/components/shared/search-input";
 import { DateRangePicker } from "@/components/shared/date-range-picker";
 import { EmptyState } from "@/components/shared/empty-state";
+import { FilterBar, LoadMore, StickyBar, usePagedRows } from "@/components/shared/list";
 import { cn } from "@/lib/utils/cn";
 import { activityIcon, visibleActivity } from "./activity-utils";
 
@@ -28,8 +28,6 @@ const ENTITY_LABELS: Record<EntityType, string> = {
   settings: "Settings & data",
 };
 
-const PAGE = 30;
-
 export function ActivityPage() {
   const { ds, idx } = useData();
   const { can } = useAuth();
@@ -38,51 +36,49 @@ export function ActivityPage() {
   const [entity, setEntity] = React.useState<"all" | EntityType>("all");
   const [actor, setActor] = React.useState("all");
   const [range, setRange] = React.useState<DateRange>(resolvePreset("all"));
-  const [limit, setLimit] = React.useState(PAGE);
 
   const entries = visibleActivity(ds.activity, user.role, user.id)
     .filter((e) => entity === "all" || e.entityType === entity)
     .filter((e) => actor === "all" || e.actorId === actor)
     .filter((e) => inRange(e.timestamp.slice(0, 10), range))
     .filter((e) => e.description.toLowerCase().includes(search.trim().toLowerCase()));
+  const paged = usePagedRows(entries, `${search}|${entity}|${actor}|${range.from}|${range.to}`);
 
   return (
     <>
       <PageHeader title="Activity Log" description="A history of important changes across the showroom." />
       <Card>
-        <div className="flex flex-col gap-3 border-b p-3 sm:p-4 lg:flex-row lg:items-center">
-          <SearchInput value={search} onChange={(v) => { setSearch(v); setLimit(PAGE); }} placeholder="Search activity…" />
-          <div className="flex flex-1 flex-wrap gap-2">
-            <Select value={entity} onValueChange={(v) => { setEntity(v as typeof entity); setLimit(PAGE); }}>
+        <StickyBar>
+          <FilterBar
+            search={<SearchInput value={search} onChange={setSearch} placeholder="Search activity…" className="w-full sm:w-72" />}
+            end={<DateRangePicker value={range} onChange={setRange} />}
+          >
+            <Select value={entity} onValueChange={(v) => setEntity(v as typeof entity)}>
               <SelectTrigger className="h-9 w-[170px]" aria-label="Type"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All activity</SelectItem>
                 {ENTITY_TYPES.filter((t) => t !== "user" || can("users.manage")).map((t) => <SelectItem key={t} value={t}>{ENTITY_LABELS[t]}</SelectItem>)}
               </SelectContent>
             </Select>
-            <Select value={actor} onValueChange={(v) => { setActor(v); setLimit(PAGE); }}>
+            <Select value={actor} onValueChange={setActor}>
               <SelectTrigger className="h-9 w-[170px]" aria-label="Employee"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All employees</SelectItem>
                 {ds.users.map((u) => <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>)}
               </SelectContent>
             </Select>
-          </div>
-          <DateRangePicker value={range} onChange={(r) => { setRange(r); setLimit(PAGE); }} />
-        </div>
+          </FilterBar>
+        </StickyBar>
         {entries.length === 0 ? (
           <EmptyState icon={History} title="No activity found" description="Try a different filter or date range." />
         ) : (
           <>
             <ol className="divide-y">
-              {entries.slice(0, limit).map((e) => (
+              {paged.visible.map((e) => (
                 <ActivityRow key={e.id} entry={e} actorName={idx.users.get(e.actorId)?.name ?? "System"} showFinancial={can("finance.viewCost")} />
               ))}
             </ol>
-            <div className="flex items-center justify-between border-t px-4 py-3 text-xs text-muted-foreground">
-              <span className="tabular">Showing {Math.min(limit, entries.length)} of {entries.length}</span>
-              {entries.length > limit && <Button variant="outline" size="sm" onClick={() => setLimit((l) => l + PAGE)}>Load more</Button>}
-            </div>
+            <LoadMore shown={paged.visible.length} total={paged.total} hasMore={paged.hasMore} onLoadMore={paged.loadMore} />
           </>
         )}
       </Card>
@@ -95,7 +91,7 @@ function ActivityRow({ entry: e, actorName, showFinancial }: { entry: ActivityLo
   const financial = showFinancial ? e.metadata.financial ?? [] : [];
   const changes = e.metadata.changes ?? [];
   return (
-    <li className="flex gap-3 px-4 py-3.5">
+    <li className="flex gap-3 px-4 py-3">
       <span className={cn("mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full", tone)}>
         <Icon className="size-4" aria-hidden />
       </span>

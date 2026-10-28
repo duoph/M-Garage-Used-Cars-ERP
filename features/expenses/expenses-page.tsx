@@ -1,6 +1,5 @@
 "use client";
 import * as React from "react";
-import Link from "next/link";
 import { Download, MoreHorizontal, Pencil, Plus, SearchX, Trash2, Wallet } from "lucide-react";
 import { toast } from "sonner";
 import { useData } from "@/components/providers/data-provider";
@@ -22,7 +21,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { PageHeader } from "@/components/shared/page-header";
 import { SearchInput } from "@/components/shared/search-input";
 import { DateRangePicker } from "@/components/shared/date-range-picker";
-import { DataTable, type ColumnDef } from "@/components/shared/data-table";
+import { FilterBar, ListRow, LoadMore, RowCell, StickyBar, usePagedRows } from "@/components/shared/list";
 import { EmptyState } from "@/components/shared/empty-state";
 import { StatCard } from "@/components/shared/stat-card";
 import { ChartCard } from "@/components/shared/chart-card";
@@ -59,59 +58,7 @@ export function ExpensesPage() {
   const totalVehicle = sumPaise(inPeriod.filter((e) => e.vehicleId).map((e) => e.amountPaise));
   const totalGeneral = totalAll - totalVehicle;
 
-  const columns = React.useMemo<ColumnDef<Expense>[]>(
-    () => [
-      { id: "date", header: "Date", accessorFn: (e) => e.date, cell: ({ row: { original: e } }) => formatDate(e.date) },
-      { id: "ref", header: "Reference", accessorFn: (e) => e.reference, cell: ({ getValue }) => <span className="text-muted-foreground">{String(getValue())}</span> },
-      { id: "category", header: "Category", accessorFn: (e) => EXPENSE_CATEGORY_LABELS[e.category], cell: ({ row: { original: e } }) => <Badge tone={e.vehicleId ? "brand" : "neutral"}>{EXPENSE_CATEGORY_LABELS[e.category]}</Badge> },
-      {
-        id: "desc",
-        header: "Description",
-        accessorFn: (e) => e.description,
-        cell: ({ row: { original: e } }) => (
-          <div className="max-w-64">
-            <div className="truncate">{e.description}</div>
-            {e.vendor && <div className="truncate text-xs text-muted-foreground">{e.vendor}</div>}
-          </div>
-        ),
-      },
-      {
-        id: "vehicle",
-        header: "Vehicle",
-        accessorFn: (e) => (e.vehicleId ? idx.vehicles.get(e.vehicleId)?.model ?? "" : ""),
-        cell: ({ row: { original: e } }) => {
-          const v = e.vehicleId ? idx.vehicles.get(e.vehicleId) : undefined;
-          return v ? (
-            <Link href={`/inventory/${v.id}`} className="hover:underline">
-              {vehicleTitle(v)} <span className="font-mono text-[11px] text-muted-foreground">{v.registrationNumber}</span>
-            </Link>
-          ) : (
-            <span className="text-muted-foreground">General</span>
-          );
-        },
-      },
-      { id: "amount", header: "Amount", accessorFn: (e) => e.amountPaise, cell: ({ row: { original: e } }) => <span className="font-medium">{formatINR(e.amountPaise)}</span>, meta: { align: "right" } },
-      { id: "by", header: "Recorded by", accessorFn: (e) => idx.users.get(e.createdBy)?.name ?? "" },
-      {
-        id: "actions",
-        enableSorting: false,
-        header: () => <span className="sr-only">Actions</span>,
-        cell: ({ row: { original: e } }) =>
-          canManage ? (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon-sm" aria-label={`Actions for ${e.reference}`}><MoreHorizontal /></Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent>
-                <DropdownMenuItem onSelect={() => openExpense({ expenseId: e.id })}><Pencil /> Edit</DropdownMenuItem>
-                <DropdownMenuItem variant="destructive" onSelect={() => setToDelete(e)}><Trash2 /> Delete</DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          ) : null,
-      },
-    ],
-    [idx, canManage, openExpense],
-  );
+  const paged = usePagedRows(rows, `${search}|${type}|${category}|${range.from}|${range.to}`);
 
   function exportCsv() {
     downloadCsv(`expenses-${todayISO()}.csv`, rows, [
@@ -151,9 +98,11 @@ export function ExpensesPage() {
         <ExpenseBreakdownChart data={expenseBreakdown(inPeriod)} height={300} />
       </ChartCard>
       <Card className="mt-4">
-        <div className="flex flex-col gap-3 border-b p-3 sm:p-4 lg:flex-row lg:items-center">
-          <SearchInput value={search} onChange={setSearch} placeholder="Search description, vendor, vehicle…" className="lg:w-80" />
-          <div className="flex flex-wrap gap-2">
+        <StickyBar>
+          <FilterBar
+            search={<SearchInput value={search} onChange={setSearch} placeholder="Search description, vendor, vehicle…" className="w-full sm:w-72" />}
+            end={<span className="hidden text-xs text-muted-foreground tabular md:inline">{rows.length} expenses</span>}
+          >
             <Select value={type} onValueChange={(v) => setType(v as typeof type)}>
               <SelectTrigger className="h-9 w-[150px]" aria-label="Expense type"><SelectValue /></SelectTrigger>
               <SelectContent>
@@ -163,41 +112,68 @@ export function ExpensesPage() {
               </SelectContent>
             </Select>
             <Select value={category} onValueChange={(v) => setCategory(v as typeof category)}>
-              <SelectTrigger className="h-9 w-[200px]" aria-label="Category"><SelectValue /></SelectTrigger>
+              <SelectTrigger className="h-9 w-[190px]" aria-label="Category"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All categories</SelectItem>
                 {EXPENSE_CATEGORIES.map((c) => <SelectItem key={c} value={c}>{EXPENSE_CATEGORY_LABELS[c]}</SelectItem>)}
               </SelectContent>
             </Select>
-          </div>
-        </div>
+          </FilterBar>
+        </StickyBar>
         {ds.expenses.length === 0 ? (
           <EmptyState icon={Wallet} title="No expenses recorded" description="Track repairs, detailing, rent, salaries and more." action={canManage && <Button onClick={() => openExpense()}><Plus /> Add expense</Button>} />
+        ) : rows.length === 0 ? (
+          <EmptyState icon={SearchX} title="No expenses in this view" description="Try a wider date range or different filters." />
         ) : (
-          <DataTable
-            data={rows}
-            columns={columns}
-            getRowId={(e) => e.id}
-            resetPageKey={`${search}|${type}|${category}|${range.from}|${range.to}`}
-            empty={<EmptyState icon={SearchX} title="No expenses in this view" description="Try a wider date range or different filters." />}
-            renderMobileCard={(e) => {
-              const v = e.vehicleId ? idx.vehicles.get(e.vehicleId) : undefined;
-              return (
-                <div className="flex items-start gap-3 px-4 py-3">
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate text-sm font-medium">{e.description}</div>
-                    <div className="truncate text-xs text-muted-foreground">
-                      {EXPENSE_CATEGORY_LABELS[e.category]} · {formatDate(e.date)}{v ? ` · ${vehicleTitle(v)}` : ""}
-                    </div>
-                  </div>
-                  <div className="text-sm font-semibold tabular">{formatINR(e.amountPaise)}</div>
-                  {canManage && (
-                    <Button variant="ghost" size="icon-sm" aria-label="Edit expense" onClick={() => openExpense({ expenseId: e.id })}><Pencil /></Button>
-                  )}
-                </div>
-              );
-            }}
-          />
+          <>
+            <ul className="divide-y">
+              {paged.visible.map((e) => {
+                const v = e.vehicleId ? idx.vehicles.get(e.vehicleId) : undefined;
+                const categoryBadge = <Badge tone={v ? "brand" : "neutral"}>{EXPENSE_CATEGORY_LABELS[e.category]}</Badge>;
+                return (
+                  <ListRow
+                    key={e.id}
+                    onClick={canManage ? () => openExpense({ expenseId: e.id }) : undefined}
+                    title={e.description}
+                    subtitle={
+                      <>
+                        {formatDate(e.date)} · {v ? <>{vehicleTitle(v)} <span className="font-mono">{v.registrationNumber}</span></> : "General"}
+                        {e.vendor && <> · {e.vendor}</>}
+                        {" · "}{e.reference}
+                      </>
+                    }
+                    mobile={
+                      <>
+                        <span className="text-sm font-semibold tabular">{formatINR(e.amountPaise)}</span>
+                        {categoryBadge}
+                      </>
+                    }
+                    aside={
+                      <>
+                        <RowCell from="md" className="w-36 text-right">{categoryBadge}</RowCell>
+                        <RowCell from="lg" className="w-28 truncate text-right text-xs text-muted-foreground">{idx.users.get(e.createdBy)?.name ?? ""}</RowCell>
+                        <RowCell className="w-28 text-right text-sm font-semibold tabular">{formatINR(e.amountPaise)}</RowCell>
+                      </>
+                    }
+                    action={
+                      canManage && (
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon-sm" aria-label={`Actions for ${e.reference}`}><MoreHorizontal /></Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onSelect={() => openExpense({ expenseId: e.id })}><Pencil /> Edit</DropdownMenuItem>
+                            <DropdownMenuItem variant="destructive" onSelect={() => setToDelete(e)}><Trash2 /> Delete</DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      )
+                    }
+                  />
+                );
+              })}
+            </ul>
+            <LoadMore shown={paged.visible.length} total={paged.total} hasMore={paged.hasMore} onLoadMore={paged.loadMore} />
+          </>
         )}
       </Card>
       <ConfirmDialog

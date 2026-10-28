@@ -1,7 +1,7 @@
 "use client";
 import * as React from "react";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { Download, Plus, SearchX, ShoppingCart } from "lucide-react";
 import { toast } from "sonner";
 import { useData } from "@/components/providers/data-provider";
@@ -18,7 +18,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { PageHeader } from "@/components/shared/page-header";
 import { SearchInput } from "@/components/shared/search-input";
 import { DateRangePicker } from "@/components/shared/date-range-picker";
-import { DataTable, type ColumnDef } from "@/components/shared/data-table";
+import { FilterBar, ListRow, LoadMore, RowCell, StickyBar, usePagedRows } from "@/components/shared/list";
 import { EmptyState } from "@/components/shared/empty-state";
 import { VehicleImage } from "@/components/shared/vehicle-image";
 import { PaymentStatusBadge, PurchaseStatusBadge, VehicleStatusBadge } from "@/components/shared/status-badge";
@@ -33,7 +33,6 @@ interface PurchaseRow {
 export function PurchasesPage() {
   const { ds, idx } = useData();
   const { can } = useAuth();
-  const router = useRouter();
   const [search, setSearch] = React.useState("");
   const [range, setRange] = React.useState<DateRange>(resolvePreset("all"));
   const params = useSearchParams();
@@ -75,48 +74,7 @@ export function PurchasesPage() {
     due: sumPaise(rows.filter((r) => r.purchase.status === "active").map((r) => purchaseBalance(r.purchase))),
   };
 
-  const columns = React.useMemo<ColumnDef<PurchaseRow>[]>(() => {
-    const cols: ColumnDef<PurchaseRow>[] = [
-      { id: "ref", header: "Reference", accessorFn: (r) => r.purchase.reference, cell: ({ row: { original: r } }) => <Link href={`/purchases/${r.purchase.id}`} className="font-medium hover:underline">{r.purchase.reference}</Link> },
-      {
-        id: "vehicle",
-        header: "Vehicle",
-        accessorFn: (r) => (r.vehicle ? vehicleTitle(r.vehicle) : ""),
-        cell: ({ row: { original: r } }) => (
-          <div className="flex items-center gap-2.5">
-            <VehicleImage image={r.cover} alt="" className="h-8 w-11 shrink-0 rounded" />
-            <span>{r.vehicle ? `${r.vehicle.year} ${vehicleTitle(r.vehicle)}` : "—"}</span>
-          </div>
-        ),
-      },
-      { id: "reg", header: "Registration", accessorFn: (r) => r.vehicle?.registrationNumber ?? "", cell: ({ getValue }) => <span className="font-mono text-xs">{String(getValue())}</span> },
-      { id: "seller", header: "Seller", accessorFn: (r) => r.purchase.sellerName },
-      { id: "date", header: "Purchase date", accessorFn: (r) => r.purchase.purchaseDate, cell: ({ row: { original: r } }) => formatDate(r.purchase.purchaseDate) },
-    ];
-    if (canCost)
-      cols.push({ id: "amount", header: "Amount", accessorFn: (r) => r.purchase.purchasePricePaise, cell: ({ row: { original: r } }) => <span className="font-medium">{formatINR(r.purchase.purchasePricePaise)}</span>, meta: { align: "right" } });
-    cols.push(
-      { id: "payment", header: "Payment", accessorFn: (r) => r.status, cell: ({ row: { original: r } }) => <PaymentStatusBadge status={r.status} /> },
-      {
-        id: "inventory",
-        header: "Inventory",
-        accessorFn: (r) => r.vehicle?.status ?? "",
-        cell: ({ row: { original: r } }) =>
-          r.purchase.status === "cancelled" ? <PurchaseStatusBadge status="cancelled" /> : r.vehicle ? <VehicleStatusBadge status={r.vehicle.status} /> : null,
-      },
-      {
-        id: "actions",
-        enableSorting: false,
-        header: () => <span className="sr-only">Actions</span>,
-        cell: ({ row: { original: r } }) => (
-          <Button variant="ghost" size="sm" asChild>
-            <Link href={`/purchases/${r.purchase.id}`}>View</Link>
-          </Button>
-        ),
-      },
-    );
-    return cols;
-  }, [canCost]);
+  const paged = usePagedRows(rows, `${search}|${payment}|${state}|${range.from}|${range.to}`);
 
   function exportCsv() {
     downloadCsv(`purchases-${todayISO()}.csv`, rows, [
@@ -163,7 +121,7 @@ export function PurchasesPage() {
             ["Acquisition cost", formatINRCompact(totals.cost)],
             ["Owed to sellers", formatINRCompact(totals.due)],
           ].map(([k, val]) => (
-            <div key={k} className="rounded-xl border bg-card px-4 py-3 shadow-[0_1px_2px_rgba(16,24,40,0.04)]">
+            <div key={k} className="rounded-xl border bg-card px-4 py-3">
               <div className="text-xs text-muted-foreground">{k}</div>
               <div className="mt-0.5 text-lg font-semibold tabular">{val}</div>
             </div>
@@ -171,9 +129,16 @@ export function PurchasesPage() {
         </div>
       )}
       <Card>
-        <div className="flex flex-col gap-3 border-b p-3 sm:p-4 lg:flex-row lg:items-center">
-          <SearchInput value={search} onChange={setSearch} placeholder="Search reference, seller, vehicle…" className="lg:w-80" />
-          <div className="flex flex-1 flex-wrap items-center gap-2">
+        <StickyBar>
+          <FilterBar
+            search={<SearchInput value={search} onChange={setSearch} placeholder="Search reference, seller, vehicle…" className="w-full sm:w-72" />}
+            end={
+              <>
+                <span className="hidden text-xs text-muted-foreground tabular md:inline">{rows.length} purchases</span>
+                <DateRangePicker value={range} onChange={setRange} />
+              </>
+            }
+          >
             <Select value={payment} onValueChange={(v) => setPayment(v as typeof payment)}>
               <SelectTrigger className="h-9 w-[150px]" aria-label="Payment status"><SelectValue /></SelectTrigger>
               <SelectContent>
@@ -192,9 +157,8 @@ export function PurchasesPage() {
                 <SelectItem value="all">All records</SelectItem>
               </SelectContent>
             </Select>
-          </div>
-          <DateRangePicker value={range} onChange={setRange} />
-        </div>
+          </FilterBar>
+        </StickyBar>
         {ds.purchases.length === 0 ? (
           <EmptyState
             icon={ShoppingCart}
@@ -202,28 +166,51 @@ export function PurchasesPage() {
             description="Record a purchase to add a vehicle to stock."
             action={can("purchases.manage") && <Button asChild><Link href="/purchases/new"><Plus /> New purchase</Link></Button>}
           />
+        ) : rows.length === 0 ? (
+          <EmptyState icon={SearchX} title="No purchases match" description="Adjust the search, dates or filters." />
         ) : (
-          <DataTable
-            data={rows}
-            columns={columns}
-            getRowId={(r) => r.purchase.id}
-            resetPageKey={`${search}|${payment}|${state}|${range.from}|${range.to}`}
-            onRowClick={(r) => router.push(`/purchases/${r.purchase.id}`)}
-            empty={<EmptyState icon={SearchX} title="No purchases match" description="Adjust the search, dates or filters." />}
-            renderMobileCard={(r) => (
-              <Link href={`/purchases/${r.purchase.id}`} className="flex items-center gap-3 px-4 py-3">
-                <VehicleImage image={r.cover} alt="" className="h-12 w-16 shrink-0 rounded-md" />
-                <div className="min-w-0 flex-1">
-                  <div className="truncate text-sm font-medium">{r.vehicle ? `${r.vehicle.year} ${vehicleTitle(r.vehicle)}` : r.purchase.reference}</div>
-                  <div className="truncate text-xs text-muted-foreground">{r.purchase.reference} · {r.purchase.sellerName} · {formatDate(r.purchase.purchaseDate)}</div>
-                  <div className="mt-1 flex items-center gap-2">
-                    {canCost && <span className="text-sm font-semibold tabular">{formatINR(r.purchase.purchasePricePaise)}</span>}
-                    <PaymentStatusBadge status={r.status} />
-                  </div>
-                </div>
-              </Link>
-            )}
-          />
+          <>
+            <ul className="divide-y">
+              {paged.visible.map((r) => {
+                const due = purchaseBalance(r.purchase);
+                return (
+                  <ListRow
+                    key={r.purchase.id}
+                    href={`/purchases/${r.purchase.id}`}
+                    leading={<VehicleImage image={r.cover} alt="" className="h-12 w-[72px] shrink-0 rounded-md" />}
+                    title={r.vehicle ? `${r.vehicle.year} ${vehicleTitle(r.vehicle)}` : r.purchase.reference}
+                    subtitle={
+                      <>
+                        {r.vehicle && <span className="font-mono text-foreground/80">{r.vehicle.registrationNumber} · </span>}
+                        {r.purchase.sellerName} · {formatDate(r.purchase.purchaseDate)} · {r.purchase.reference}
+                      </>
+                    }
+                    mobile={
+                      <>
+                        {canCost && <span className="text-sm font-semibold tabular">{formatINR(r.purchase.purchasePricePaise)}</span>}
+                        <PaymentStatusBadge status={r.status} />
+                      </>
+                    }
+                    aside={
+                      <>
+                        {canCost && (
+                          <RowCell className="w-28 text-right">
+                            <div className="text-sm font-semibold tabular">{formatINR(r.purchase.purchasePricePaise)}</div>
+                            {r.purchase.status === "active" && due > 0 && <div className="text-[11px] text-warning tabular">Due {formatINR(due)}</div>}
+                          </RowCell>
+                        )}
+                        <RowCell className="w-28 text-right"><PaymentStatusBadge status={r.status} /></RowCell>
+                        <RowCell from="md" className="w-24 text-right">
+                          {r.purchase.status === "cancelled" ? <PurchaseStatusBadge status="cancelled" /> : r.vehicle ? <VehicleStatusBadge status={r.vehicle.status} /> : null}
+                        </RowCell>
+                      </>
+                    }
+                  />
+                );
+              })}
+            </ul>
+            <LoadMore shown={paged.visible.length} total={paged.total} hasMore={paged.hasMore} onLoadMore={paged.loadMore} />
+          </>
         )}
       </Card>
     </>

@@ -22,7 +22,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { PageHeader } from "@/components/shared/page-header";
 import { SearchInput } from "@/components/shared/search-input";
-import { DataTable, type ColumnDef } from "@/components/shared/data-table";
+import { FilterBar, ListRow, LoadMore, RowCell, StickyBar, usePagedRows } from "@/components/shared/list";
 import { EmptyState } from "@/components/shared/empty-state";
 import { UserAvatar } from "@/components/shared/user-avatar";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
@@ -50,44 +50,7 @@ export function StaffPage() {
     .filter((u) => `${u.name} ${u.email} ${u.phone}`.toLowerCase().includes(search.trim().toLowerCase()))
     .sort((a, b) => ROLES.indexOf(a.role) - ROLES.indexOf(b.role) || a.name.localeCompare(b.name));
 
-  const columns: ColumnDef<User>[] = [
-    {
-      id: "name",
-      header: "Employee",
-      accessorFn: (u) => u.name,
-      cell: ({ row: { original: u } }) => (
-        <div className="flex items-center gap-3">
-          <UserAvatar name={u.name} />
-          <div>
-            <div className="font-medium">{u.name} {u.id === me.id && <span className="text-xs font-normal text-muted-foreground">(you)</span>}</div>
-            <div className="text-xs text-muted-foreground">{u.email}</div>
-          </div>
-        </div>
-      ),
-    },
-    { id: "phone", header: "Contact", accessorFn: (u) => u.phone, cell: ({ getValue }) => String(getValue() || "—") },
-    { id: "role", header: "Role", accessorFn: (u) => ROLES.indexOf(u.role), cell: ({ row: { original: u } }) => <Badge tone={u.role === "admin" ? "brand" : "neutral"}>{ROLE_LABELS[u.role]}</Badge> },
-    { id: "status", header: "Status", accessorFn: (u) => u.status, cell: ({ row: { original: u } }) => (u.status === "active" ? <Badge tone="success">Active</Badge> : <Badge tone="neutral">Inactive</Badge>) },
-    { id: "created", header: "Created", accessorFn: (u) => u.createdAt, cell: ({ row: { original: u } }) => formatDate(u.createdAt) },
-    {
-      id: "actions",
-      enableSorting: false,
-      header: () => <span className="sr-only">Actions</span>,
-      cell: ({ row: { original: u } }) => (
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon-sm" aria-label={`Actions for ${u.name}`}><MoreHorizontal /></Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent>
-            <DropdownMenuItem onSelect={() => setEditing(u)}><Pencil /> Edit user</DropdownMenuItem>
-            <DropdownMenuItem disabled={u.id === me.id} variant={u.status === "active" ? "destructive" : "default"} onSelect={() => setToggling(u)}>
-              <Power /> {u.status === "active" ? "Deactivate" : "Reactivate"}
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      ),
-    },
-  ];
+  const paged = usePagedRows(rows, `${search}|${role}|${status}`);
 
   return (
     <>
@@ -101,7 +64,7 @@ export function StaffPage() {
       </div>
       <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {ROLES.map((r) => (
-          <div key={r} className="rounded-xl border bg-card p-3.5 shadow-[0_1px_2px_rgba(16,24,40,0.04)]">
+          <div key={r} className="rounded-xl border bg-card p-3.5">
             <div className="flex items-center justify-between">
               <span className="text-[13px] font-semibold">{ROLE_LABELS[r]}</span>
               <span className="text-xs text-muted-foreground tabular">{ds.users.filter((u) => u.role === r && u.status === "active").length} active</span>
@@ -112,9 +75,11 @@ export function StaffPage() {
         ))}
       </div>
       <Card>
-        <div className="flex flex-col gap-3 border-b p-3 sm:p-4 lg:flex-row lg:items-center">
-          <SearchInput value={search} onChange={setSearch} placeholder="Search employees…" />
-          <div className="flex flex-wrap gap-2">
+        <StickyBar>
+          <FilterBar
+            search={<SearchInput value={search} onChange={setSearch} placeholder="Search employees…" className="w-full sm:w-72" />}
+            end={<span className="hidden text-xs text-muted-foreground tabular md:inline">{rows.length} users</span>}
+          >
             <Select value={role} onValueChange={(v) => setRole(v as typeof role)}>
               <SelectTrigger className="h-9 w-[160px]" aria-label="Role"><SelectValue /></SelectTrigger>
               <SelectContent>
@@ -130,28 +95,51 @@ export function StaffPage() {
                 <SelectItem value="inactive">Inactive</SelectItem>
               </SelectContent>
             </Select>
-          </div>
-        </div>
-        <DataTable
-          data={rows}
-          columns={columns}
-          getRowId={(u) => u.id}
-          resetPageKey={`${search}|${role}|${status}`}
-          empty={<EmptyState icon={ds.users.length ? SearchX : Users} title="No users match" />}
-          renderMobileCard={(u) => (
-            <button type="button" onClick={() => setEditing(u)} className="flex w-full items-center gap-3 px-4 py-3 text-left">
-              <UserAvatar name={u.name} />
-              <div className="min-w-0 flex-1">
-                <div className="truncate text-sm font-medium">{u.name}</div>
-                <div className="truncate text-xs text-muted-foreground">{u.email}</div>
-              </div>
-              <div className="flex flex-col items-end gap-1">
-                <Badge tone={u.role === "admin" ? "brand" : "neutral"}>{ROLE_LABELS[u.role]}</Badge>
-                {u.status === "inactive" && <span className="text-[11px] text-muted-foreground">Inactive</span>}
-              </div>
-            </button>
-          )}
-        />
+          </FilterBar>
+        </StickyBar>
+        {rows.length === 0 ? (
+          <EmptyState icon={ds.users.length ? SearchX : Users} title="No users match" />
+        ) : (
+          <>
+            <ul className="divide-y">
+              {paged.visible.map((u) => {
+                const roleBadge = <Badge tone={u.role === "admin" ? "brand" : "neutral"}>{ROLE_LABELS[u.role]}</Badge>;
+                const statusBadge = u.status === "active" ? <Badge tone="success">Active</Badge> : <Badge tone="neutral">Inactive</Badge>;
+                return (
+                  <ListRow
+                    key={u.id}
+                    onClick={() => setEditing(u)}
+                    leading={<UserAvatar name={u.name} />}
+                    title={<>{u.name} {u.id === me.id && <span className="text-xs font-normal text-muted-foreground">(you)</span>}</>}
+                    subtitle={<>{u.email}{u.phone && <> · {u.phone}</>}</>}
+                    mobile={<>{roleBadge}{statusBadge}</>}
+                    aside={
+                      <>
+                        <RowCell className="w-32 text-right">{roleBadge}</RowCell>
+                        <RowCell className="w-20 text-right">{statusBadge}</RowCell>
+                        <RowCell from="lg" className="w-28 text-right text-xs text-muted-foreground" title="Created">{formatDate(u.createdAt)}</RowCell>
+                      </>
+                    }
+                    action={
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon-sm" aria-label={`Actions for ${u.name}`}><MoreHorizontal /></Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onSelect={() => setEditing(u)}><Pencil /> Edit user</DropdownMenuItem>
+                          <DropdownMenuItem disabled={u.id === me.id} variant={u.status === "active" ? "destructive" : "default"} onSelect={() => setToggling(u)}>
+                            <Power /> {u.status === "active" ? "Deactivate" : "Reactivate"}
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    }
+                  />
+                );
+              })}
+            </ul>
+            <LoadMore shown={paged.visible.length} total={paged.total} hasMore={paged.hasMore} onLoadMore={paged.loadMore} />
+          </>
+        )}
       </Card>
 
       <Dialog open={editing !== null} onOpenChange={(o) => !o && setEditing(null)}>

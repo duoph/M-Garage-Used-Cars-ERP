@@ -25,6 +25,7 @@ import { EmptyState } from "@/components/shared/empty-state";
 import { VehicleImage } from "@/components/shared/vehicle-image";
 import { VehicleStatusBadge } from "@/components/shared/status-badge";
 import { CurrencyInput } from "@/components/shared/currency-input";
+import { FilterBar, ListRow, LoadMore, RowCell, StickyBar, usePagedRows } from "@/components/shared/list";
 import { VehicleCard } from "./vehicle-card";
 import { VehicleActionsMenu } from "./vehicle-actions";
 import { exportStockCsv } from "./export";
@@ -36,9 +37,6 @@ import {
   type InventoryFilters,
   type InventorySort,
 } from "./filters";
-
-/** Cars render in batches; the next batch loads as the list nears the bottom of the screen. */
-const PAGE_SIZE = 50;
 
 const STATUS_TABS: { value: InventoryFilters["status"]; label: string; dot?: string }[] = [
   { value: "all", label: "All" },
@@ -61,7 +59,6 @@ export function InventoryPage() {
     status: (["all", "in_stock", "available", "reserved", "sold"] as const).find((s) => s === params.get("status")) ?? "all",
     sort: (Object.keys(SORT_LABELS) as InventorySort[]).find((s) => s === params.get("sort")) ?? "newest",
   }));
-  const [page, setPage] = React.useState({ key: "", limit: PAGE_SIZE });
 
   const all = React.useMemo(() => activeVehicles(ds).map((v) => vehicleView(v, idx)), [ds, idx]);
   const rows = React.useMemo(() => applyInventoryFilters(all, filters), [all, filters]);
@@ -77,14 +74,7 @@ export function InventoryPage() {
   const canCost = can("finance.viewCost");
   const filterKey = JSON.stringify(filters);
 
-  // The loaded count resets to the first batch whenever the filters change.
-  const limit = page.key === filterKey ? page.limit : PAGE_SIZE;
-  const visible = rows.slice(0, limit);
-  const hasMore = rows.length > limit;
-  const loadMore = React.useCallback(
-    () => setPage((p) => ({ key: filterKey, limit: (p.key === filterKey ? p.limit : PAGE_SIZE) + PAGE_SIZE })),
-    [filterKey],
-  );
+  const paged = usePagedRows(rows, filterKey);
 
   const set = <K extends keyof InventoryFilters>(k: K, v: InventoryFilters[K]) => setFilters((f) => ({ ...f, [k]: v }));
   const noVehicles = all.length === 0;
@@ -119,7 +109,7 @@ export function InventoryPage() {
 
       <Card>
         {/* Tabs + filters stay pinned under the top bar while the list scrolls. */}
-        <div className="sticky top-12 z-10 rounded-t-xl border-b bg-card">
+        <StickyBar>
           <div className="flex items-end justify-between gap-3 border-b px-3 pt-1 sm:px-4">
             <div role="tablist" aria-label="Vehicle status" className="-mb-px flex gap-1 overflow-x-auto [scrollbar-width:none]">
               {STATUS_TABS.map((t) => {
@@ -150,31 +140,10 @@ export function InventoryPage() {
               {canCost ? " at cost" : " asking"}
             </span>
           </div>
-          <div className="flex flex-wrap items-center gap-2 px-3 py-2.5 sm:px-4">
-            <SearchInput value={filters.search} onChange={(v) => set("search", v)} placeholder="Search make, model, registration, stock no…" className="w-full sm:w-72" />
-            {/* On phones the controls sit in one sideways-scrolling row to keep the pinned bar short. */}
-            <div className="-mx-3 flex w-[calc(100%+1.5rem)] items-center gap-2 overflow-x-auto px-3 [scrollbar-width:none] *:shrink-0 sm:mx-0 sm:w-auto sm:flex-1 sm:flex-wrap sm:overflow-visible sm:px-0">
-              <Select value={filters.fuel} onValueChange={(v) => set("fuel", v as InventoryFilters["fuel"])}>
-                <SelectTrigger className="h-9 w-[118px]" aria-label="Fuel"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All fuels</SelectItem>
-                  {FUEL_TYPES.map((f) => <SelectItem key={f} value={f}>{FUEL_LABELS[f]}</SelectItem>)}
-                </SelectContent>
-              </Select>
-              <Select value={filters.transmission} onValueChange={(v) => set("transmission", v as InventoryFilters["transmission"])}>
-                <SelectTrigger className="h-9 w-[140px]" aria-label="Transmission"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All gearboxes</SelectItem>
-                  {TRANSMISSIONS.map((t) => <SelectItem key={t} value={t}>{TRANSMISSION_LABELS[t]}</SelectItem>)}
-                </SelectContent>
-              </Select>
-              <MoreFilters filters={filters} setFilters={setFilters} />
-              {nFilters > 0 && (
-                <Button variant="ghost" size="sm" onClick={() => setFilters((f) => ({ ...DEFAULT_INVENTORY_FILTERS, sort: f.sort }))}>
-                  <X /> Clear ({nFilters})
-                </Button>
-              )}
-              <div className="ml-auto flex items-center gap-2">
+          <FilterBar
+            search={<SearchInput value={filters.search} onChange={(v) => set("search", v)} placeholder="Search make, model, registration, stock no…" className="w-full sm:w-72" />}
+            end={
+              <>
                 <span className="hidden text-xs text-muted-foreground tabular md:inline">
                   {rows.length === all.length ? `${rows.length} vehicles` : `${rows.length} of ${all.length}`}
                 </span>
@@ -188,10 +157,31 @@ export function InventoryPage() {
                   <ToggleGroupItem value="table" aria-label="List view"><List /></ToggleGroupItem>
                   <ToggleGroupItem value="grid" aria-label="Grid view"><LayoutGrid /></ToggleGroupItem>
                 </ToggleGroup>
-              </div>
-            </div>
-          </div>
-        </div>
+              </>
+            }
+          >
+            <Select value={filters.fuel} onValueChange={(v) => set("fuel", v as InventoryFilters["fuel"])}>
+              <SelectTrigger className="h-9 w-[118px]" aria-label="Fuel"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All fuels</SelectItem>
+                {FUEL_TYPES.map((f) => <SelectItem key={f} value={f}>{FUEL_LABELS[f]}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <Select value={filters.transmission} onValueChange={(v) => set("transmission", v as InventoryFilters["transmission"])}>
+              <SelectTrigger className="h-9 w-[140px]" aria-label="Transmission"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All gearboxes</SelectItem>
+                {TRANSMISSIONS.map((t) => <SelectItem key={t} value={t}>{TRANSMISSION_LABELS[t]}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <MoreFilters filters={filters} setFilters={setFilters} />
+            {nFilters > 0 && (
+              <Button variant="ghost" size="sm" onClick={() => setFilters((f) => ({ ...DEFAULT_INVENTORY_FILTERS, sort: f.sort }))}>
+                <X /> Clear ({nFilters})
+              </Button>
+            )}
+          </FilterBar>
+        </StickyBar>
 
         {noVehicles ? (
           <EmptyState
@@ -211,14 +201,14 @@ export function InventoryPage() {
           <>
             {view === "grid" ? (
               <div className="grid gap-3 p-3 sm:grid-cols-2 sm:p-4 xl:grid-cols-3 2xl:grid-cols-4">
-                {visible.map((r) => <VehicleCard key={r.vehicle.id} view={r} />)}
+                {paged.visible.map((r) => <VehicleCard key={r.vehicle.id} view={r} />)}
               </div>
             ) : (
               <ul className="divide-y">
-                {visible.map((r) => <VehicleRow key={r.vehicle.id} view={r} showCost={canCost} />)}
+                {paged.visible.map((r) => <VehicleRow key={r.vehicle.id} view={r} showCost={canCost} />)}
               </ul>
             )}
-            <LoadMore shown={visible.length} total={rows.length} hasMore={hasMore} onLoadMore={loadMore} />
+            <LoadMore shown={paged.visible.length} total={paged.total} hasMore={paged.hasMore} onLoadMore={paged.loadMore} />
           </>
         )}
       </Card>
@@ -231,60 +221,26 @@ function VehicleRow({ view: r, showCost }: { view: VehicleView; showCost: boolea
   const v = r.vehicle;
   const aging = v.status !== "sold" && r.stockAgeDays > 60;
   return (
-    <li className="flex items-center gap-2 pr-2 transition-colors hover:bg-muted/50 sm:pr-3">
-      <Link href={`/inventory/${v.id}`} className="flex min-w-0 flex-1 items-center gap-3 py-2.5 pl-3 outline-none focus-visible:bg-muted sm:pl-4">
-        <VehicleImage image={r.cover} alt={vehicleTitle(v)} className="h-12 w-[72px] shrink-0 rounded-md" />
-        <div className="min-w-0 flex-1">
-          <div className="truncate text-sm font-medium">
-            {v.year} {vehicleTitle(v)} <span className="font-normal text-muted-foreground">{v.variant}</span>
-          </div>
-          <div className="truncate text-xs text-muted-foreground">
-            <span className="font-mono text-foreground/80">{v.registrationNumber}</span>
-            {" · "}{FUEL_LABELS[v.fuelType]} · {TRANSMISSION_LABELS[v.transmission]} · {formatKm(v.mileageKm)}
-          </div>
-          {/* On phones, price and status move under the name. */}
-          <div className="mt-1 flex items-center gap-2 sm:hidden">
-            <span className="text-sm font-semibold tabular">{formatINR(v.askingPricePaise)}</span>
-            <VehicleStatusBadge status={v.status} />
-          </div>
-        </div>
-        <div className="hidden w-28 shrink-0 text-right sm:block">
-          <div className="text-sm font-semibold tabular">{formatINR(v.askingPricePaise)}</div>
-          {showCost && <div className="text-[11px] text-muted-foreground tabular">Cost {formatINR(r.landedCostPaise)}</div>}
-        </div>
-        <div className="hidden w-24 shrink-0 justify-end sm:flex">
-          <VehicleStatusBadge status={v.status} />
-        </div>
-        <div className={cn("hidden w-10 shrink-0 text-right text-xs tabular md:block", aging ? "font-medium text-warning" : "text-muted-foreground")} title="Days in stock">
-          {r.stockAgeDays}d
-        </div>
-      </Link>
-      <VehicleActionsMenu view={r} />
-    </li>
-  );
-}
-
-/** Auto-loads the next batch when the footer scrolls near view; the button covers keyboard users and slow scrolls. */
-function LoadMore({ shown, total, hasMore, onLoadMore }: { shown: number; total: number; hasMore: boolean; onLoadMore: () => void }) {
-  const ref = React.useRef<HTMLDivElement>(null);
-  React.useEffect(() => {
-    const el = ref.current;
-    if (!el || !hasMore) return;
-    const io = new IntersectionObserver(([entry]) => entry.isIntersecting && onLoadMore(), { rootMargin: "400px 0px" });
-    io.observe(el);
-    return () => io.disconnect();
-    // `shown` re-arms the observer after each batch, so a still-visible footer keeps loading.
-  }, [hasMore, onLoadMore, shown]);
-
-  return (
-    <div ref={ref} className="flex flex-col items-center gap-2 border-t px-4 py-3 text-xs text-muted-foreground">
-      <span className="tabular">Showing {shown} of {total}</span>
-      {hasMore && (
-        <Button variant="outline" size="sm" onClick={onLoadMore}>
-          Load {Math.min(PAGE_SIZE, total - shown)} more
-        </Button>
-      )}
-    </div>
+    <ListRow
+      href={`/inventory/${v.id}`}
+      leading={<VehicleImage image={r.cover} alt={vehicleTitle(v)} className="h-12 w-[72px] shrink-0 rounded-md" />}
+      title={<>{v.year} {vehicleTitle(v)} <span className="font-normal text-muted-foreground">{v.variant}</span></>}
+      subtitle={<><span className="font-mono text-foreground/80">{v.registrationNumber}</span> · {FUEL_LABELS[v.fuelType]} · {TRANSMISSION_LABELS[v.transmission]} · {formatKm(v.mileageKm)}</>}
+      mobile={<><span className="text-sm font-semibold tabular">{formatINR(v.askingPricePaise)}</span><VehicleStatusBadge status={v.status} /></>}
+      aside={
+        <>
+          <RowCell className="w-28 text-right">
+            <div className="text-sm font-semibold tabular">{formatINR(v.askingPricePaise)}</div>
+            {showCost && <div className="text-[11px] text-muted-foreground tabular">Cost {formatINR(r.landedCostPaise)}</div>}
+          </RowCell>
+          <RowCell className="w-24 text-right"><VehicleStatusBadge status={v.status} /></RowCell>
+          <RowCell from="md" className={cn("w-10 text-right text-xs tabular", aging ? "font-medium text-warning" : "text-muted-foreground")} title="Days in stock">
+            {r.stockAgeDays}d
+          </RowCell>
+        </>
+      }
+      action={<VehicleActionsMenu view={r} />}
+    />
   );
 }
 
