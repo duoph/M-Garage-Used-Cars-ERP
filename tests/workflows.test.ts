@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { DealerDatabase } from "@/lib/db/database";
-import { buildDemoData, DEMO_USER_IDS, seedDatabase } from "@/lib/db/seed";
+import { buildDemoData, DEMO_USER_IDS, EXTRA_DEMO_VEHICLES, seedDatabase } from "@/lib/db/seed";
 import { createDealerService } from "@/lib/services/dealer-service";
 import { BusinessError, type DealerCommands } from "@/lib/repositories/contracts";
 import { indexDataset, periodSummary, vehicleView, type Dataset } from "@/lib/calculations/selectors";
@@ -53,6 +53,17 @@ describe("seed data", () => {
       expect(paid).toBeLessThanOrEqual(s.salePricePaise);
     }
     expect(data.salePayments.some((p) => Number.isInteger(p.amountPaise))).toBe(true);
+  });
+
+  it("includes the generated extra cars with unique registration and chassis numbers", () => {
+    const data = buildDemoData({ withImages: false });
+    expect(data.vehicles).toHaveLength(22 + EXTRA_DEMO_VEHICLES);
+    expect(new Set(data.vehicles.map((v) => v.registrationNumber.replace(/\s/g, ""))).size).toBe(data.vehicles.length);
+    expect(new Set(data.vehicles.map((v) => v.chassisNumber)).size).toBe(data.vehicles.length);
+    for (const s of data.sales) {
+      const purchase = data.purchases.find((p) => p.vehicleId === s.vehicleId)!;
+      expect(s.saleDate >= purchase.purchaseDate).toBe(true);
+    }
   });
 });
 

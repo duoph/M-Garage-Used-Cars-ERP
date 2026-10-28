@@ -119,6 +119,103 @@ const VEHICLES: VehicleSeed[] = [
   { photo: "venue", make: "Hyundai", model: "Venue", variant: "S(O) 1.2", style: "suv", year: 2020, fuel: "petrol", trans: "manual", km: 43900, color: "Grey", owners: 2, reg: "KL 17 R 3331", chassis: "MALCU41ULLM20118", asking: 7.65, purchasedDaysAgo: 2, outcome: { kind: "available" } },
 ];
 
+/** Trims per model, so repeat cars differ in spec as well as year, km and numbers. `adj` scales the price. */
+const VARIANTS: Record<string, { variant: string; fuel: FuelType; trans: Transmission; adj: number }[]> = {
+  baleno: [{ variant: "Delta 1.2", fuel: "petrol", trans: "manual", adj: 0.92 }, { variant: "Zeta 1.2", fuel: "petrol", trans: "manual", adj: 1 }, { variant: "Alpha 1.2 AMT", fuel: "petrol", trans: "amt", adj: 1.1 }],
+  creta20: [{ variant: "S 1.5 Petrol", fuel: "petrol", trans: "manual", adj: 0.88 }, { variant: "SX 1.5 Diesel", fuel: "diesel", trans: "manual", adj: 1 }, { variant: "SX (O) 1.5 Diesel AT", fuel: "diesel", trans: "automatic", adj: 1.12 }],
+  nexon: [{ variant: "XM Petrol", fuel: "petrol", trans: "manual", adj: 0.86 }, { variant: "XZ+ Petrol", fuel: "petrol", trans: "manual", adj: 1 }, { variant: "XZA+ Diesel AMT", fuel: "diesel", trans: "amt", adj: 1.12 }],
+  city19: [{ variant: "SV MT", fuel: "petrol", trans: "manual", adj: 0.9 }, { variant: "V CVT", fuel: "petrol", trans: "cvt", adj: 1 }, { variant: "ZX Diesel MT", fuel: "diesel", trans: "manual", adj: 1.08 }],
+  seltos: [{ variant: "HTK 1.5 Petrol", fuel: "petrol", trans: "manual", adj: 0.85 }, { variant: "HTX 1.5 iVT", fuel: "petrol", trans: "cvt", adj: 1 }, { variant: "GTX+ 1.4 Turbo DCT", fuel: "petrol", trans: "dct", adj: 1.15 }],
+  innova: [{ variant: "2.4 GX 8S", fuel: "diesel", trans: "manual", adj: 0.9 }, { variant: "2.4 VX 7S", fuel: "diesel", trans: "manual", adj: 1 }, { variant: "2.4 ZX 7S AT", fuel: "diesel", trans: "automatic", adj: 1.14 }],
+  swift: [{ variant: "LXi", fuel: "petrol", trans: "manual", adj: 0.85 }, { variant: "VXi AMT", fuel: "petrol", trans: "amt", adj: 1 }, { variant: "ZXi Plus", fuel: "petrol", trans: "manual", adj: 1.1 }],
+  polo: [{ variant: "Comfortline 1.0 MPI", fuel: "petrol", trans: "manual", adj: 0.88 }, { variant: "Highline Plus 1.0 TSI", fuel: "petrol", trans: "manual", adj: 1 }, { variant: "GT 1.0 TSI AT", fuel: "petrol", trans: "automatic", adj: 1.15 }],
+  slavia: [{ variant: "Active 1.0 TSI", fuel: "petrol", trans: "manual", adj: 0.82 }, { variant: "Ambition 1.0 TSI AT", fuel: "petrol", trans: "automatic", adj: 0.92 }, { variant: "Style 1.5 TSI DSG", fuel: "petrol", trans: "dct", adj: 1 }],
+  i20: [{ variant: "Magna 1.2", fuel: "petrol", trans: "manual", adj: 0.86 }, { variant: "Sportz 1.2 IVT", fuel: "petrol", trans: "cvt", adj: 0.95 }, { variant: "Asta (O) 1.2", fuel: "petrol", trans: "manual", adj: 1 }],
+  xuv300: [{ variant: "W6 Petrol", fuel: "petrol", trans: "manual", adj: 0.88 }, { variant: "W8 (O) Diesel", fuel: "diesel", trans: "manual", adj: 1 }, { variant: "W8 (O) Diesel AMT", fuel: "diesel", trans: "amt", adj: 1.06 }],
+  creta22: [{ variant: "EX 1.5 Petrol", fuel: "petrol", trans: "manual", adj: 0.78 }, { variant: "SX 1.5 Diesel AT", fuel: "diesel", trans: "automatic", adj: 0.95 }, { variant: "SX (O) 1.5 Turbo DCT", fuel: "petrol", trans: "dct", adj: 1 }],
+  brezza: [{ variant: "LXi", fuel: "petrol", trans: "manual", adj: 0.8 }, { variant: "VXi CNG", fuel: "cng", trans: "manual", adj: 0.9 }, { variant: "ZXi Plus AT", fuel: "petrol", trans: "automatic", adj: 1.08 }],
+  kwid: [{ variant: "RXL 0.8", fuel: "petrol", trans: "manual", adj: 0.88 }, { variant: "RXT 1.0", fuel: "petrol", trans: "manual", adj: 1 }, { variant: "Climber 1.0 AMT", fuel: "petrol", trans: "amt", adj: 1.1 }],
+  cityhev: [{ variant: "V e:HEV", fuel: "hybrid", trans: "cvt", adj: 0.93 }, { variant: "ZX e:HEV", fuel: "hybrid", trans: "cvt", adj: 1 }],
+  nexonev: [{ variant: "Prime XM", fuel: "electric", trans: "automatic", adj: 0.85 }, { variant: "Max XZ+ Lux", fuel: "electric", trans: "automatic", adj: 1 }],
+  sonet: [{ variant: "HTE 1.2", fuel: "petrol", trans: "manual", adj: 0.8 }, { variant: "HTX 1.0 Turbo iMT", fuel: "petrol", trans: "manual", adj: 1 }, { variant: "GTX+ 1.5 Diesel AT", fuel: "diesel", trans: "automatic", adj: 1.2 }],
+  dzire: [{ variant: "LXi", fuel: "petrol", trans: "manual", adj: 0.86 }, { variant: "VXi CNG", fuel: "cng", trans: "manual", adj: 1 }, { variant: "ZXi AMT", fuel: "petrol", trans: "amt", adj: 1.08 }],
+  glanza: [{ variant: "G MT", fuel: "petrol", trans: "manual", adj: 0.9 }, { variant: "V AMT", fuel: "petrol", trans: "amt", adj: 1 }, { variant: "S CNG", fuel: "cng", trans: "manual", adj: 0.95 }],
+  thar: [{ variant: "AX (O) 4WD Diesel", fuel: "diesel", trans: "manual", adj: 0.9 }, { variant: "LX 4WD Petrol AT", fuel: "petrol", trans: "automatic", adj: 0.98 }, { variant: "LX 4WD Diesel AT", fuel: "diesel", trans: "automatic", adj: 1 }],
+  kushaq: [{ variant: "Active 1.0 TSI", fuel: "petrol", trans: "manual", adj: 0.88 }, { variant: "Ambition 1.0 TSI", fuel: "petrol", trans: "manual", adj: 1 }, { variant: "Style 1.5 TSI DSG", fuel: "petrol", trans: "dct", adj: 1.22 }],
+  venue: [{ variant: "E 1.2", fuel: "petrol", trans: "manual", adj: 0.85 }, { variant: "S(O) 1.2", fuel: "petrol", trans: "manual", adj: 1 }, { variant: "SX 1.0 Turbo DCT", fuel: "petrol", trans: "dct", adj: 1.2 }],
+};
+
+/** How many extra demo cars are generated on top of the hand-written fleet above. */
+export const EXTRA_DEMO_VEHICLES = 100;
+
+/**
+ * Repeats the models above with different trims, years, mileage, prices and unique registration and
+ * chassis numbers. Uses its own fixed seed, so every reset produces the same cars.
+ */
+function extraVehicleSeeds(count: number): VehicleSeed[] {
+  const rand = mulberry32(20261028);
+  const int = (min: number, max: number) => min + Math.floor(rand() * (max - min + 1));
+  const pick = <T,>(xs: readonly T[]): T => xs[Math.floor(rand() * xs.length)];
+  // Series letters skip I, O, Q and Z (Z is reserved for test registrations).
+  const SERIES = "ABCDEFGHJKLMNPRSTUVWXY";
+  const VIN_CHARS = "ABCDEFGHJKLMNPRSTUVWXYZ0123456789";
+  const RTO: Record<string, number[]> = { KL: [1, 2, 5, 7, 7, 7, 8, 10, 11, 13, 17, 39, 40, 41, 43, 51, 63], KA: [1, 3, 5, 51, 53], TN: [9, 10, 22, 38] };
+  const usedRegs = new Set(VEHICLES.map((v) => v.reg));
+  const usedChassis = new Set(VEHICLES.map((v) => v.chassis));
+  const unique = (used: Set<string>, make: () => string) => {
+    let value = make();
+    while (used.has(value)) value = make();
+    used.add(value);
+    return value;
+  };
+
+  const out: VehicleSeed[] = [];
+  for (let i = 0; i < count; i++) {
+    const base = VEHICLES[i % VEHICLES.length];
+    const spec = pick(VARIANTS[base.photo] ?? [{ variant: base.variant, fuel: base.fuel, trans: base.trans, adj: 1 }]);
+    const year = Math.max(2014, Math.min(2025, base.year + int(-3, 2)));
+    const age = 2026 - year;
+    const km = Math.round((age * int(7000, 13500) + int(1500, 6000)) / 100) * 100;
+    const state = pick(["KL", "KL", "KL", "KL", "KL", "KA", "TN"] as const);
+    const reg = unique(usedRegs, () => `${state} ${String(pick(RTO[state])).padStart(2, "0")} ${pick([...SERIES])}${pick([...SERIES])} ${int(1000, 9999)}`);
+    const chassis = unique(usedChassis, () => base.chassis.slice(0, 8) + Array.from({ length: 9 }, () => pick([...VIN_CHARS])).join(""));
+    const asking = Math.max(2.5, Math.round(base.asking * spec.adj * (1 + 0.07 * (year - base.year)) * (0.95 + rand() * 0.1) * 20) / 20);
+    const purchasedDaysAgo = int(1, 175);
+
+    let outcome: VehicleSeed["outcome"] = { kind: "available" };
+    const roll = rand();
+    if (purchasedDaysAgo > 30 && roll < 0.4)
+      outcome = {
+        kind: "sold",
+        daysAgo: int(1, purchasedDaysAgo - 7),
+        discount: pick([0.05, 0.1, 0.15, 0.2, 0.25, 0.3]),
+        paidPct: rand() < 0.15 ? pick([0.5, 0.6, 0.75, 0.9]) : 1,
+        buyer: int(0, BUYERS.length - 1),
+      };
+    else if (roll < 0.48)
+      outcome = { kind: "reserved", daysAgo: int(1, Math.min(12, purchasedDaysAgo)), booking: pick([0.25, 0.5, 1]), buyer: int(0, BUYERS.length - 1) };
+
+    out.push({
+      ...base,
+      variant: spec.variant,
+      fuel: spec.fuel,
+      trans: spec.trans,
+      year,
+      km,
+      owners: age > 7 ? int(1, 3) : age > 4 ? int(1, 2) : 1,
+      reg,
+      chassis,
+      asking,
+      purchasedDaysAgo,
+      outcome,
+    });
+  }
+  return out;
+}
+
+/** Everything that gets seeded: the hand-written cars first, then the generated repeats. */
+const FLEET: VehicleSeed[] = [...VEHICLES, ...extraVehicleSeeds(EXTRA_DEMO_VEHICLES)];
+
 const VEHICLE_EXPENSE_TEMPLATES: { category: ExpenseCategory; description: string; vendor: string; min: number; max: number }[] = [
   { category: "detailing", description: "Interior deep cleaning and exterior polish", vendor: "Shine Car Spa", min: 2500, max: 6500 },
   { category: "repair", description: "Front bumper repair and alignment", vendor: "Kochi Auto Works", min: 6000, max: 18000 },
@@ -182,7 +279,9 @@ export interface SeedOptions {
 /** Builds the full demo dataset in memory. */
 export function buildDemoData({ withImages = true, now = new Date() }: SeedOptions = {}) {
   const rand = mulberry32(20261027);
-  const between = (min: number, max: number) => Math.round(min + rand() * (max - min));
+  // Generated cars draw from their own stream so the hand-written cars and monthly expenses stay identical.
+  const extraRand = mulberry32(20261029);
+  const between = (min: number, max: number, r = rand) => Math.round(min + r() * (max - min));
   const year = now.getFullYear();
   const nowIso = now.toISOString();
   const users = demoUsers(nowIso);
@@ -214,13 +313,14 @@ export function buildDemoData({ withImages = true, now = new Date() }: SeedOptio
   const monthStart = startOfMonth(now);
   const daysIntoMonth = Math.max(0, Math.floor((now.getTime() - monthStart.getTime()) / 86_400_000));
 
-  VEHICLES.forEach((s, idx) => {
+  FLEET.forEach((s, idx) => {
+    const rng = idx < VEHICLES.length ? rand : extraRand;
     const purchaseDate = subDays(now, s.purchasedDaysAgo);
     const created = at(purchaseDate, 10 + (idx % 6), (idx * 7) % 60);
     const vehicleId = newId();
     const purchaseId = newId();
     const askingPaise = L(s.asking);
-    const purchasePaise = Math.round((askingPaise * (0.83 + rand() * 0.05)) / 100_000) * 100_000; // round to ₹1,000
+    const purchasePaise = Math.round((askingPaise * (0.83 + rng() * 0.05)) / 100_000) * 100_000; // round to ₹1,000
     const seller = SELLERS[idx % SELLERS.length];
     const fullyPaid = idx % 7 !== 3;
     const stockNumber = `STK-${String(++counters.STK).padStart(4, "0")}`;
@@ -289,7 +389,7 @@ export function buildDemoData({ withImages = true, now = new Date() }: SeedOptio
     for (let e = 0; e < expenseCount; e++) {
       const t = VEHICLE_EXPENSE_TEMPLATES[(idx + e * 2) % VEHICLE_EXPENSE_TEMPLATES.length];
       const date = addDays(purchaseDate, Math.min(s.purchasedDaysAgo, 1 + e * 3));
-      const amount = Math.round(between(t.min, t.max) / 50) * 50 * 100;
+      const amount = Math.round(between(t.min, t.max, rng) / 50) * 50 * 100;
       const exp: Expense = {
         id: newId(), reference: ref("EXP"), vehicleId, category: t.category, amountPaise: amount, date: iso(date),
         description: t.description, vendor: t.vendor, paymentMethod: e % 2 ? "cash" : "upi", notes: "",
