@@ -6,3 +6,4 @@ export const metadata: Metadata = { title: "Activity Log" };
 export default function Page() {
   return <ActivityPage />;
 }
+
