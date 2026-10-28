@@ -9,12 +9,15 @@ export function SearchInput({
   onChange,
   placeholder = "Search…",
   className,
+  size = "default",
   "aria-label": ariaLabel,
 }: {
   value: string;
   onChange: (value: string) => void;
   placeholder?: string;
   className?: string;
+  /** `sm` matches the 32px controls used in list filter bars. */
+  size?: "default" | "sm";
   "aria-label"?: string;
 }) {
   return (
@@ -26,7 +29,7 @@ export function SearchInput({
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
         aria-label={ariaLabel ?? placeholder}
-        className={cn(inputClass, "pl-8 pr-8 [&::-webkit-search-cancel-button]:hidden")}
+        className={cn(inputClass, "pl-8 pr-8 [&::-webkit-search-cancel-button]:hidden", size === "sm" && "h-8 text-[13px]")}
       />
       {value && (
         <button

@@ -77,18 +77,17 @@ export function StaffPage() {
       <Card>
         <StickyBar>
           <FilterBar
-            search={<SearchInput value={search} onChange={setSearch} placeholder="Search employees…" className="w-full sm:w-72" />}
-            end={<span className="hidden text-xs text-muted-foreground tabular md:inline">{rows.length} users</span>}
+            search={<SearchInput value={search} onChange={setSearch} placeholder="Search employees…" className="sm:w-full" size="sm" />}
           >
             <Select value={role} onValueChange={(v) => setRole(v as typeof role)}>
-              <SelectTrigger className="h-9 w-[160px]" aria-label="Role"><SelectValue /></SelectTrigger>
+              <SelectTrigger className="h-8 w-[160px]" aria-label="Role"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All roles</SelectItem>
                 {ROLES.map((r) => <SelectItem key={r} value={r}>{ROLE_LABELS[r]}</SelectItem>)}
               </SelectContent>
             </Select>
             <Select value={status} onValueChange={(v) => setStatus(v as typeof status)}>
-              <SelectTrigger className="h-9 w-[130px]" aria-label="Status"><SelectValue /></SelectTrigger>
+              <SelectTrigger className="h-8 w-[130px]" aria-label="Status"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All statuses</SelectItem>
                 <SelectItem value="active">Active</SelectItem>

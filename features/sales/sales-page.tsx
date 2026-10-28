@@ -119,16 +119,11 @@ export function SalesPage() {
       <Card>
         <StickyBar>
           <FilterBar
-            search={<SearchInput value={search} onChange={setSearch} placeholder="Search ref, buyer, vehicle…" className="w-full sm:w-72" />}
-            end={
-              <>
-                <span className="hidden text-xs text-muted-foreground tabular md:inline">{rows.length} sales</span>
-                <DateRangePicker value={range} onChange={setRange} />
-              </>
-            }
+            search={<SearchInput value={search} onChange={setSearch} placeholder="Search ref, buyer, vehicle…" className="sm:w-full" size="sm" />}
+            end={<DateRangePicker value={range} onChange={setRange} size="sm" />}
           >
             <Select value={payment} onValueChange={(v) => setPayment(v as typeof payment)}>
-              <SelectTrigger className="h-9 w-[150px]" aria-label="Payment status"><SelectValue /></SelectTrigger>
+              <SelectTrigger className="h-8 w-[150px]" aria-label="Payment status"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All payments</SelectItem>
                 <SelectItem value="unsettled">Balance due</SelectItem>
@@ -138,7 +133,7 @@ export function SalesPage() {
               </SelectContent>
             </Select>
             <Select value={status} onValueChange={(v) => setStatus(v as typeof status)}>
-              <SelectTrigger className="h-9 w-[140px]" aria-label="Sale status"><SelectValue /></SelectTrigger>
+              <SelectTrigger className="h-8 w-[140px]" aria-label="Sale status"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="completed">Completed</SelectItem>
                 <SelectItem value="cancelled">Cancelled</SelectItem>

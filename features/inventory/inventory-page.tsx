@@ -79,6 +79,21 @@ export function InventoryPage() {
   const set = <K extends keyof InventoryFilters>(k: K, v: InventoryFilters[K]) => setFilters((f) => ({ ...f, [k]: v }));
   const noVehicles = all.length === 0;
 
+  const sortAndView = (
+    <>
+      <Select value={filters.sort} onValueChange={(v) => set("sort", v as InventorySort)}>
+        <SelectTrigger className="h-8 w-[150px] text-[13px]" aria-label="Sort by"><SelectValue /></SelectTrigger>
+        <SelectContent>
+          {(Object.keys(SORT_LABELS) as InventorySort[]).map((s) => <SelectItem key={s} value={s}>{SORT_LABELS[s]}</SelectItem>)}
+        </SelectContent>
+      </Select>
+      <ToggleGroup type="single" value={view} onValueChange={(v) => v && setView(v as "grid" | "table")} aria-label="View">
+        <ToggleGroupItem value="table" aria-label="List view"><List /></ToggleGroupItem>
+        <ToggleGroupItem value="grid" aria-label="Grid view"><LayoutGrid /></ToggleGroupItem>
+      </ToggleGroup>
+    </>
+  );
+
   return (
     <>
       <PageHeader
@@ -110,8 +125,8 @@ export function InventoryPage() {
       <Card>
         {/* Tabs + filters stay pinned under the top bar while the list scrolls. */}
         <StickyBar>
-          <div className="flex items-end justify-between gap-3 border-b px-3 pt-1 sm:px-4">
-            <div role="tablist" aria-label="Vehicle status" className="-mb-px flex gap-1 overflow-x-auto [scrollbar-width:none]">
+          <div className="flex items-center justify-between gap-3 border-b px-3 sm:px-4">
+            <div role="tablist" aria-label="Vehicle status" className="-mb-px flex min-w-0 gap-1 self-end overflow-x-auto [scrollbar-width:none]">
               {STATUS_TABS.map((t) => {
                 const active = filters.status === t.value;
                 return (
@@ -122,7 +137,7 @@ export function InventoryPage() {
                     aria-selected={active}
                     onClick={() => set("status", t.value)}
                     className={cn(
-                      "flex h-10 shrink-0 items-center gap-2 border-b-2 px-2.5 text-sm font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring/30 rounded-t-md",
+                      "flex h-10 shrink-0 items-center gap-1.5 border-b-2 px-2 text-[13px] font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring/30 rounded-t-md",
                       active ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground",
                     )}
                   >
@@ -135,40 +150,27 @@ export function InventoryPage() {
                 );
               })}
             </div>
-            <span className="hidden shrink-0 pb-3 text-xs text-muted-foreground xl:inline">
-              Stock value <strong className="font-semibold text-foreground tabular">{formatINRCompact(canCost ? counts.acquisitionValuePaise : counts.askingValuePaise)}</strong>
-              {canCost ? " at cost" : " asking"}
-            </span>
+            <div className="hidden shrink-0 items-center gap-3 sm:flex">
+              <span className="hidden text-xs text-muted-foreground 2xl:inline">
+                Stock value <strong className="font-semibold text-foreground tabular">{formatINRCompact(canCost ? counts.acquisitionValuePaise : counts.askingValuePaise)}</strong>
+                {canCost ? " at cost" : " asking"}
+              </span>
+              {sortAndView}
+            </div>
           </div>
           <FilterBar
-            search={<SearchInput value={filters.search} onChange={(v) => set("search", v)} placeholder="Search make, model, registration, stock no…" className="w-full sm:w-72" />}
-            end={
-              <>
-                <span className="hidden text-xs text-muted-foreground tabular md:inline">
-                  {rows.length === all.length ? `${rows.length} vehicles` : `${rows.length} of ${all.length}`}
-                </span>
-                <Select value={filters.sort} onValueChange={(v) => set("sort", v as InventorySort)}>
-                  <SelectTrigger className="h-9 w-[160px]" aria-label="Sort by"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {(Object.keys(SORT_LABELS) as InventorySort[]).map((s) => <SelectItem key={s} value={s}>{SORT_LABELS[s]}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-                <ToggleGroup type="single" value={view} onValueChange={(v) => v && setView(v as "grid" | "table")} aria-label="View">
-                  <ToggleGroupItem value="table" aria-label="List view"><List /></ToggleGroupItem>
-                  <ToggleGroupItem value="grid" aria-label="Grid view"><LayoutGrid /></ToggleGroupItem>
-                </ToggleGroup>
-              </>
-            }
+            search={<SearchInput value={filters.search} onChange={(v) => set("search", v)} placeholder="Search make, model, registration, stock no…" className="sm:w-full" size="sm" />}
+            end={<div className="flex items-center gap-2 sm:hidden">{sortAndView}</div>}
           >
             <Select value={filters.fuel} onValueChange={(v) => set("fuel", v as InventoryFilters["fuel"])}>
-              <SelectTrigger className="h-9 w-[118px]" aria-label="Fuel"><SelectValue /></SelectTrigger>
+              <SelectTrigger className="h-8 w-[118px]" aria-label="Fuel"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All fuels</SelectItem>
                 {FUEL_TYPES.map((f) => <SelectItem key={f} value={f}>{FUEL_LABELS[f]}</SelectItem>)}
               </SelectContent>
             </Select>
             <Select value={filters.transmission} onValueChange={(v) => set("transmission", v as InventoryFilters["transmission"])}>
-              <SelectTrigger className="h-9 w-[140px]" aria-label="Transmission"><SelectValue /></SelectTrigger>
+              <SelectTrigger className="h-8 w-[140px]" aria-label="Transmission"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All gearboxes</SelectItem>
                 {TRANSMISSIONS.map((t) => <SelectItem key={t} value={t}>{TRANSMISSION_LABELS[t]}</SelectItem>)}
@@ -251,7 +253,7 @@ function MoreFilters({ filters, setFilters }: { filters: InventoryFilters; setFi
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <Button variant="outline" className="h-9">
+        <Button variant="outline" size="sm">
           <SlidersHorizontal /> Year & price{n > 0 && <span className="rounded-full bg-primary px-1.5 text-[10px] text-white">{n}</span>}
         </Button>
       </PopoverTrigger>

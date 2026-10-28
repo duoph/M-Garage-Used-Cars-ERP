@@ -100,11 +100,10 @@ export function ExpensesPage() {
       <Card className="mt-4">
         <StickyBar>
           <FilterBar
-            search={<SearchInput value={search} onChange={setSearch} placeholder="Search description, vendor, vehicle…" className="w-full sm:w-72" />}
-            end={<span className="hidden text-xs text-muted-foreground tabular md:inline">{rows.length} expenses</span>}
+            search={<SearchInput value={search} onChange={setSearch} placeholder="Search description, vendor, vehicle…" className="sm:w-full" size="sm" />}
           >
             <Select value={type} onValueChange={(v) => setType(v as typeof type)}>
-              <SelectTrigger className="h-9 w-[150px]" aria-label="Expense type"><SelectValue /></SelectTrigger>
+              <SelectTrigger className="h-8 w-[150px]" aria-label="Expense type"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All types</SelectItem>
                 <SelectItem value="vehicle">Vehicle-related</SelectItem>
@@ -112,7 +111,7 @@ export function ExpensesPage() {
               </SelectContent>
             </Select>
             <Select value={category} onValueChange={(v) => setCategory(v as typeof category)}>
-              <SelectTrigger className="h-9 w-[190px]" aria-label="Category"><SelectValue /></SelectTrigger>
+              <SelectTrigger className="h-8 w-[190px]" aria-label="Category"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All categories</SelectItem>
                 {EXPENSE_CATEGORIES.map((c) => <SelectItem key={c} value={c}>{EXPENSE_CATEGORY_LABELS[c]}</SelectItem>)}

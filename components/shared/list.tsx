@@ -27,14 +27,15 @@ export function StickyBar({ className, children }: { className?: string; childre
 }
 
 /**
- * Search box plus filter controls. On phones the controls sit in one sideways-scrolling row so the
- * pinned bar stays short; `end` (count, sort, view switch) is pushed to the right on wider screens.
+ * Search box plus filter controls on one compact line (32px controls). On phones the search sits on
+ * top and the controls scroll sideways, so the pinned bar stays short; `end` is pushed to the right.
  */
 export function FilterBar({ search, children, end }: { search: React.ReactNode; children?: React.ReactNode; end?: React.ReactNode }) {
   return (
-    <div className="flex flex-wrap items-center gap-2 px-3 py-2.5 sm:px-4">
-      {search}
-      <div className="-mx-3 flex w-[calc(100%+1.5rem)] items-center gap-2 overflow-x-auto px-3 [scrollbar-width:none] *:shrink-0 sm:mx-0 sm:w-auto sm:flex-1 sm:flex-wrap sm:overflow-visible sm:px-0">
+    <div className="flex flex-col gap-2 px-3 py-2 sm:flex-row sm:items-center sm:px-4">
+      <div className="min-w-0 sm:w-56 lg:w-64">{search}</div>
+      {/* py/-my keep focus rings visible inside the scrolling row. */}
+      <div className="-mx-3 -my-0.5 flex min-w-0 flex-1 items-center gap-2 overflow-x-auto px-3 py-0.5 [scrollbar-width:none] *:shrink-0 sm:mx-0 sm:px-0.5">
         {children}
         {end && <div className="ml-auto flex items-center gap-2">{end}</div>}
       </div>

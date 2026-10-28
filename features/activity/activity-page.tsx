@@ -50,18 +50,18 @@ export function ActivityPage() {
       <Card>
         <StickyBar>
           <FilterBar
-            search={<SearchInput value={search} onChange={setSearch} placeholder="Search activity…" className="w-full sm:w-72" />}
-            end={<DateRangePicker value={range} onChange={setRange} />}
+            search={<SearchInput value={search} onChange={setSearch} placeholder="Search activity…" className="sm:w-full" size="sm" />}
+            end={<DateRangePicker value={range} onChange={setRange} size="sm" />}
           >
             <Select value={entity} onValueChange={(v) => setEntity(v as typeof entity)}>
-              <SelectTrigger className="h-9 w-[170px]" aria-label="Type"><SelectValue /></SelectTrigger>
+              <SelectTrigger className="h-8 w-[170px]" aria-label="Type"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All activity</SelectItem>
                 {ENTITY_TYPES.filter((t) => t !== "user" || can("users.manage")).map((t) => <SelectItem key={t} value={t}>{ENTITY_LABELS[t]}</SelectItem>)}
               </SelectContent>
             </Select>
             <Select value={actor} onValueChange={setActor}>
-              <SelectTrigger className="h-9 w-[170px]" aria-label="Employee"><SelectValue /></SelectTrigger>
+              <SelectTrigger className="h-8 w-[170px]" aria-label="Employee"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All employees</SelectItem>
                 {ds.users.map((u) => <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>)}

@@ -14,7 +14,7 @@ import {
   type DateRange,
 } from "@/lib/utils/dates";
 
-export function DateRangePicker({ value, onChange, className }: { value: DateRange; onChange: (r: DateRange) => void; className?: string }) {
+export function DateRangePicker({ value, onChange, className, size = "default" }: { value: DateRange; onChange: (r: DateRange) => void; className?: string; size?: "default" | "sm" }) {
   const [open, setOpen] = React.useState(false);
   const [from, setFrom] = React.useState(value.from ?? "");
   const [to, setTo] = React.useState(value.to ?? "");
@@ -32,7 +32,7 @@ export function DateRangePicker({ value, onChange, className }: { value: DateRan
   return (
     <Popover open={open} onOpenChange={handleOpenChange}>
       <PopoverTrigger asChild>
-        <Button variant="outline" className={cn("justify-between gap-2 font-normal", className)}>
+        <Button variant="outline" size={size} className={cn("justify-between gap-2 font-normal", className)}>
           <CalendarDays className="text-muted-foreground" />
           <span className="truncate">{describeRange(value)}</span>
           <ChevronDown className="opacity-60" />
