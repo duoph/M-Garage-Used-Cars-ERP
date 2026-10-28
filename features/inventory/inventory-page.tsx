@@ -1,7 +1,7 @@
 "use client";
 import * as React from "react";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { CarFront, Download, LayoutGrid, List, Plus, SearchX, SlidersHorizontal, X } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
 import { toast } from "sonner";
@@ -22,7 +22,6 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { PageHeader } from "@/components/shared/page-header";
 import { SearchInput } from "@/components/shared/search-input";
 import { EmptyState } from "@/components/shared/empty-state";
-import { DataTable, type ColumnDef } from "@/components/shared/data-table";
 import { VehicleImage } from "@/components/shared/vehicle-image";
 import { VehicleStatusBadge } from "@/components/shared/status-badge";
 import { CurrencyInput } from "@/components/shared/currency-input";
@@ -38,7 +37,8 @@ import {
   type InventorySort,
 } from "./filters";
 
-const GRID_PAGE = 12;
+/** Cars render in batches; the next batch loads as the list nears the bottom of the screen. */
+const PAGE_SIZE = 50;
 
 const STATUS_TABS: { value: InventoryFilters["status"]; label: string; dot?: string }[] = [
   { value: "all", label: "All" },
@@ -51,18 +51,17 @@ const STATUS_TABS: { value: InventoryFilters["status"]; label: string; dot?: str
 export function InventoryPage() {
   const { ds, idx } = useData();
   const { can } = useAuth();
-  const router = useRouter();
   const storedView = useUiStore((s) => s.inventoryView);
   const setView = useUiStore((s) => s.setInventoryView);
   const view = storedView ?? ds.settings.defaultInventoryView;
   const params = useSearchParams();
-  // Deep links (e.g. from the dashboard's "Needs attention") can preset status and sort.
+  // Deep links (e.g. from the dashboard's "To do" list) can preset status and sort.
   const [filters, setFilters] = React.useState<InventoryFilters>(() => ({
     ...DEFAULT_INVENTORY_FILTERS,
     status: (["all", "in_stock", "available", "reserved", "sold"] as const).find((s) => s === params.get("status")) ?? "all",
     sort: (Object.keys(SORT_LABELS) as InventorySort[]).find((s) => s === params.get("sort")) ?? "newest",
   }));
-  const [grid, setGrid] = React.useState({ key: "", limit: GRID_PAGE });
+  const [page, setPage] = React.useState({ key: "", limit: PAGE_SIZE });
 
   const all = React.useMemo(() => activeVehicles(ds).map((v) => vehicleView(v, idx)), [ds, idx]);
   const rows = React.useMemo(() => applyInventoryFilters(all, filters), [all, filters]);
@@ -78,60 +77,16 @@ export function InventoryPage() {
   const canCost = can("finance.viewCost");
   const filterKey = JSON.stringify(filters);
 
-  // The "show more" count resets whenever the filters change.
-  const gridLimit = grid.key === filterKey ? grid.limit : GRID_PAGE;
-  const setGridLimit = (fn: (n: number) => number) => setGrid({ key: filterKey, limit: fn(gridLimit) });
+  // The loaded count resets to the first batch whenever the filters change.
+  const limit = page.key === filterKey ? page.limit : PAGE_SIZE;
+  const visible = rows.slice(0, limit);
+  const hasMore = rows.length > limit;
+  const loadMore = React.useCallback(
+    () => setPage((p) => ({ key: filterKey, limit: (p.key === filterKey ? p.limit : PAGE_SIZE) + PAGE_SIZE })),
+    [filterKey],
+  );
 
   const set = <K extends keyof InventoryFilters>(k: K, v: InventoryFilters[K]) => setFilters((f) => ({ ...f, [k]: v }));
-
-  const columns = React.useMemo<ColumnDef<VehicleView>[]>(() => {
-    const cols: ColumnDef<VehicleView>[] = [
-      {
-        id: "vehicle",
-        header: "Vehicle",
-        accessorFn: (r) => `${r.vehicle.make} ${r.vehicle.model}`,
-        cell: ({ row: { original: r } }) => (
-          <div className="flex items-center gap-3">
-            <VehicleImage image={r.cover} alt={vehicleTitle(r.vehicle)} className="h-10 w-14 shrink-0 rounded-md" />
-            <div className="min-w-0">
-              <Link href={`/inventory/${r.vehicle.id}`} className="font-medium hover:underline">
-                {vehicleTitle(r.vehicle)}
-              </Link>
-              <div className="max-w-56 truncate text-xs text-muted-foreground">{r.vehicle.variant} · {r.vehicle.stockNumber}</div>
-            </div>
-          </div>
-        ),
-      },
-      { id: "reg", header: "Registration", accessorFn: (r) => r.vehicle.registrationNumber, cell: ({ getValue }) => <span className="font-mono text-xs">{String(getValue())}</span> },
-      { id: "year", header: "Year", accessorFn: (r) => r.vehicle.year },
-      { id: "fuel", header: "Fuel", accessorFn: (r) => FUEL_LABELS[r.vehicle.fuelType], cell: ({ row: { original: r } }) => <span>{FUEL_LABELS[r.vehicle.fuelType]} · <span className="text-muted-foreground">{TRANSMISSION_LABELS[r.vehicle.transmission]}</span></span> },
-      { id: "km", header: "Kilometers", accessorFn: (r) => r.vehicle.mileageKm, cell: ({ row: { original: r } }) => formatKm(r.vehicle.mileageKm), meta: { align: "right" } },
-      { id: "price", header: "Asking price", accessorFn: (r) => r.vehicle.askingPricePaise, cell: ({ row: { original: r } }) => <span className="font-medium">{formatINR(r.vehicle.askingPricePaise)}</span>, meta: { align: "right" } },
-    ];
-    if (canCost)
-      cols.push({
-        id: "cost",
-        header: "Landed cost",
-        accessorFn: (r) => r.landedCostPaise,
-        cell: ({ row: { original: r } }) => <span className="text-muted-foreground">{formatINR(r.landedCostPaise)}</span>,
-        meta: { align: "right" },
-      });
-    cols.push(
-      { id: "status", header: "Status", accessorFn: (r) => r.vehicle.status, cell: ({ row: { original: r } }) => <VehicleStatusBadge status={r.vehicle.status} /> },
-      {
-        id: "age",
-        header: "Stock age",
-        accessorFn: (r) => r.stockAgeDays,
-        cell: ({ row: { original: r } }) => (
-          <span className={r.vehicle.status !== "sold" && r.stockAgeDays > 60 ? "font-medium text-warning" : ""}>{r.stockAgeDays}d</span>
-        ),
-        meta: { align: "right" },
-      },
-      { id: "actions", header: () => <span className="sr-only">Actions</span>, enableSorting: false, cell: ({ row: { original: r } }) => <VehicleActionsMenu view={r} /> },
-    );
-    return cols;
-  }, [canCost]);
-
   const noVehicles = all.length === 0;
 
   return (
@@ -163,75 +118,79 @@ export function InventoryPage() {
       />
 
       <Card>
-        <div className="flex flex-col gap-3 border-b px-3 pt-3 sm:px-4 sm:pt-4 lg:flex-row lg:items-end lg:justify-between">
-          <div role="tablist" aria-label="Vehicle status" className="-mb-px flex gap-1 overflow-x-auto [scrollbar-width:none]">
-            {STATUS_TABS.map((t) => {
-              const active = filters.status === t.value;
-              return (
-                <button
-                  key={t.value}
-                  type="button"
-                  role="tab"
-                  aria-selected={active}
-                  onClick={() => set("status", t.value)}
-                  className={cn(
-                    "flex h-10 shrink-0 items-center gap-2 border-b-2 px-3 text-sm font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring/30 rounded-t-md",
-                    active ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground",
-                  )}
-                >
-                  {t.dot && <span className={cn("size-1.5 rounded-full", t.dot)} aria-hidden />}
-                  {t.label}
-                  <span className={cn("rounded-full px-1.5 text-[11px] tabular", active ? "bg-primary-soft text-primary" : "bg-muted text-muted-foreground")}>
-                    {statusCount[t.value]}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-          <div className="flex items-center gap-2 pb-3">
-            <span className="hidden text-xs text-muted-foreground xl:inline">
+        {/* Tabs + filters stay pinned under the top bar while the list scrolls. */}
+        <div className="sticky top-12 z-10 rounded-t-xl border-b bg-card">
+          <div className="flex items-end justify-between gap-3 border-b px-3 pt-1 sm:px-4">
+            <div role="tablist" aria-label="Vehicle status" className="-mb-px flex gap-1 overflow-x-auto [scrollbar-width:none]">
+              {STATUS_TABS.map((t) => {
+                const active = filters.status === t.value;
+                return (
+                  <button
+                    key={t.value}
+                    type="button"
+                    role="tab"
+                    aria-selected={active}
+                    onClick={() => set("status", t.value)}
+                    className={cn(
+                      "flex h-10 shrink-0 items-center gap-2 border-b-2 px-2.5 text-sm font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring/30 rounded-t-md",
+                      active ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground",
+                    )}
+                  >
+                    {t.dot && <span className={cn("size-1.5 rounded-full", t.dot)} aria-hidden />}
+                    {t.label}
+                    <span className={cn("rounded-full px-1.5 text-[11px] tabular", active ? "bg-primary-soft text-primary" : "bg-muted text-muted-foreground")}>
+                      {statusCount[t.value]}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+            <span className="hidden shrink-0 pb-3 text-xs text-muted-foreground xl:inline">
               Stock value <strong className="font-semibold text-foreground tabular">{formatINRCompact(canCost ? counts.acquisitionValuePaise : counts.askingValuePaise)}</strong>
               {canCost ? " at cost" : " asking"}
             </span>
-            <Select value={filters.sort} onValueChange={(v) => set("sort", v as InventorySort)}>
-              <SelectTrigger className="h-9 w-[170px]" aria-label="Sort by"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                {(Object.keys(SORT_LABELS) as InventorySort[]).map((s) => <SelectItem key={s} value={s}>{SORT_LABELS[s]}</SelectItem>)}
-              </SelectContent>
-            </Select>
-            <ToggleGroup type="single" value={view} onValueChange={(v) => v && setView(v as "grid" | "table")} aria-label="View">
-              <ToggleGroupItem value="grid" aria-label="Grid view"><LayoutGrid /></ToggleGroupItem>
-              <ToggleGroupItem value="table" aria-label="Table view"><List /></ToggleGroupItem>
-            </ToggleGroup>
           </div>
-        </div>
-        <div className="flex flex-col gap-2 border-b bg-[#fbfcfd] p-3 sm:flex-row sm:flex-wrap sm:items-center sm:px-4">
-          <SearchInput value={filters.search} onChange={(v) => set("search", v)} placeholder="Search make, model, registration, stock no…" className="sm:w-80" />
-          <div className="flex flex-wrap items-center gap-2">
-            <Select value={filters.fuel} onValueChange={(v) => set("fuel", v as InventoryFilters["fuel"])}>
-              <SelectTrigger className="h-9 w-[120px]" aria-label="Fuel"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All fuels</SelectItem>
-                {FUEL_TYPES.map((f) => <SelectItem key={f} value={f}>{FUEL_LABELS[f]}</SelectItem>)}
-              </SelectContent>
-            </Select>
-            <Select value={filters.transmission} onValueChange={(v) => set("transmission", v as InventoryFilters["transmission"])}>
-              <SelectTrigger className="h-9 w-[150px]" aria-label="Transmission"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All gearboxes</SelectItem>
-                {TRANSMISSIONS.map((t) => <SelectItem key={t} value={t}>{TRANSMISSION_LABELS[t]}</SelectItem>)}
-              </SelectContent>
-            </Select>
-            <MoreFilters filters={filters} setFilters={setFilters} />
-            {nFilters > 0 && (
-              <Button variant="ghost" size="sm" onClick={() => setFilters((f) => ({ ...DEFAULT_INVENTORY_FILTERS, sort: f.sort }))}>
-                <X /> Clear ({nFilters})
-              </Button>
-            )}
+          <div className="flex flex-wrap items-center gap-2 px-3 py-2.5 sm:px-4">
+            <SearchInput value={filters.search} onChange={(v) => set("search", v)} placeholder="Search make, model, registration, stock no…" className="w-full sm:w-72" />
+            {/* On phones the controls sit in one sideways-scrolling row to keep the pinned bar short. */}
+            <div className="-mx-3 flex w-[calc(100%+1.5rem)] items-center gap-2 overflow-x-auto px-3 [scrollbar-width:none] *:shrink-0 sm:mx-0 sm:w-auto sm:flex-1 sm:flex-wrap sm:overflow-visible sm:px-0">
+              <Select value={filters.fuel} onValueChange={(v) => set("fuel", v as InventoryFilters["fuel"])}>
+                <SelectTrigger className="h-9 w-[118px]" aria-label="Fuel"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All fuels</SelectItem>
+                  {FUEL_TYPES.map((f) => <SelectItem key={f} value={f}>{FUEL_LABELS[f]}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              <Select value={filters.transmission} onValueChange={(v) => set("transmission", v as InventoryFilters["transmission"])}>
+                <SelectTrigger className="h-9 w-[140px]" aria-label="Transmission"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All gearboxes</SelectItem>
+                  {TRANSMISSIONS.map((t) => <SelectItem key={t} value={t}>{TRANSMISSION_LABELS[t]}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              <MoreFilters filters={filters} setFilters={setFilters} />
+              {nFilters > 0 && (
+                <Button variant="ghost" size="sm" onClick={() => setFilters((f) => ({ ...DEFAULT_INVENTORY_FILTERS, sort: f.sort }))}>
+                  <X /> Clear ({nFilters})
+                </Button>
+              )}
+              <div className="ml-auto flex items-center gap-2">
+                <span className="hidden text-xs text-muted-foreground tabular md:inline">
+                  {rows.length === all.length ? `${rows.length} vehicles` : `${rows.length} of ${all.length}`}
+                </span>
+                <Select value={filters.sort} onValueChange={(v) => set("sort", v as InventorySort)}>
+                  <SelectTrigger className="h-9 w-[160px]" aria-label="Sort by"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {(Object.keys(SORT_LABELS) as InventorySort[]).map((s) => <SelectItem key={s} value={s}>{SORT_LABELS[s]}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+                <ToggleGroup type="single" value={view} onValueChange={(v) => v && setView(v as "grid" | "table")} aria-label="View">
+                  <ToggleGroupItem value="table" aria-label="List view"><List /></ToggleGroupItem>
+                  <ToggleGroupItem value="grid" aria-label="Grid view"><LayoutGrid /></ToggleGroupItem>
+                </ToggleGroup>
+              </div>
+            </div>
           </div>
-          <span className="text-xs text-muted-foreground tabular sm:ml-auto">
-            {rows.length === all.length ? `${rows.length} vehicles` : `${rows.length} of ${all.length} vehicles`}
-          </span>
         </div>
 
         {noVehicles ? (
@@ -248,46 +207,84 @@ export function InventoryPage() {
             description="Try a different search term or clear some filters."
             action={<Button variant="outline" onClick={() => setFilters(DEFAULT_INVENTORY_FILTERS)}>Clear all filters</Button>}
           />
-        ) : view === "grid" ? (
-          <div className="p-3 sm:p-4">
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-              {rows.slice(0, gridLimit).map((r) => <VehicleCard key={r.vehicle.id} view={r} />)}
-            </div>
-            {rows.length > gridLimit && (
-              <div className="mt-4 flex justify-center">
-                <Button variant="outline" onClick={() => setGridLimit((n) => n + GRID_PAGE)}>
-                  Show more ({rows.length - gridLimit} remaining)
-                </Button>
-              </div>
-            )}
-          </div>
         ) : (
-          <DataTable
-            data={rows}
-            columns={columns}
-            getRowId={(r) => r.vehicle.id}
-            resetPageKey={filterKey}
-            onRowClick={(r) => router.push(`/inventory/${r.vehicle.id}`)}
-            renderMobileCard={(r) => (
-              <div className="flex items-center gap-3 px-4 py-3">
-                <Link href={`/inventory/${r.vehicle.id}`} className="flex min-w-0 flex-1 items-center gap-3">
-                  <VehicleImage image={r.cover} alt={vehicleTitle(r.vehicle)} className="h-14 w-20 shrink-0 rounded-md" />
-                  <div className="min-w-0">
-                    <div className="truncate text-sm font-medium">{r.vehicle.year} {vehicleTitle(r.vehicle)}</div>
-                    <div className="truncate text-xs text-muted-foreground">{r.vehicle.registrationNumber} · {formatKm(r.vehicle.mileageKm)}</div>
-                    <div className="mt-1 flex items-center gap-2">
-                      <span className="text-sm font-semibold tabular">{formatINR(r.vehicle.askingPricePaise)}</span>
-                      <VehicleStatusBadge status={r.vehicle.status} />
-                    </div>
-                  </div>
-                </Link>
-                <VehicleActionsMenu view={r} />
+          <>
+            {view === "grid" ? (
+              <div className="grid gap-3 p-3 sm:grid-cols-2 sm:p-4 xl:grid-cols-3 2xl:grid-cols-4">
+                {visible.map((r) => <VehicleCard key={r.vehicle.id} view={r} />)}
               </div>
+            ) : (
+              <ul className="divide-y">
+                {visible.map((r) => <VehicleRow key={r.vehicle.id} view={r} showCost={canCost} />)}
+              </ul>
             )}
-          />
+            <LoadMore shown={visible.length} total={rows.length} hasMore={hasMore} onLoadMore={loadMore} />
+          </>
         )}
       </Card>
     </>
+  );
+}
+
+/** One car per row: photo, name and specs on the left; price, status and stock age on the right. */
+function VehicleRow({ view: r, showCost }: { view: VehicleView; showCost: boolean }) {
+  const v = r.vehicle;
+  const aging = v.status !== "sold" && r.stockAgeDays > 60;
+  return (
+    <li className="flex items-center gap-2 pr-2 transition-colors hover:bg-muted/50 sm:pr-3">
+      <Link href={`/inventory/${v.id}`} className="flex min-w-0 flex-1 items-center gap-3 py-2.5 pl-3 outline-none focus-visible:bg-muted sm:pl-4">
+        <VehicleImage image={r.cover} alt={vehicleTitle(v)} className="h-12 w-[72px] shrink-0 rounded-md" />
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-sm font-medium">
+            {v.year} {vehicleTitle(v)} <span className="font-normal text-muted-foreground">{v.variant}</span>
+          </div>
+          <div className="truncate text-xs text-muted-foreground">
+            <span className="font-mono text-foreground/80">{v.registrationNumber}</span>
+            {" · "}{FUEL_LABELS[v.fuelType]} · {TRANSMISSION_LABELS[v.transmission]} · {formatKm(v.mileageKm)}
+          </div>
+          {/* On phones, price and status move under the name. */}
+          <div className="mt-1 flex items-center gap-2 sm:hidden">
+            <span className="text-sm font-semibold tabular">{formatINR(v.askingPricePaise)}</span>
+            <VehicleStatusBadge status={v.status} />
+          </div>
+        </div>
+        <div className="hidden w-28 shrink-0 text-right sm:block">
+          <div className="text-sm font-semibold tabular">{formatINR(v.askingPricePaise)}</div>
+          {showCost && <div className="text-[11px] text-muted-foreground tabular">Cost {formatINR(r.landedCostPaise)}</div>}
+        </div>
+        <div className="hidden w-24 shrink-0 justify-end sm:flex">
+          <VehicleStatusBadge status={v.status} />
+        </div>
+        <div className={cn("hidden w-10 shrink-0 text-right text-xs tabular md:block", aging ? "font-medium text-warning" : "text-muted-foreground")} title="Days in stock">
+          {r.stockAgeDays}d
+        </div>
+      </Link>
+      <VehicleActionsMenu view={r} />
+    </li>
+  );
+}
+
+/** Auto-loads the next batch when the footer scrolls near view; the button covers keyboard users and slow scrolls. */
+function LoadMore({ shown, total, hasMore, onLoadMore }: { shown: number; total: number; hasMore: boolean; onLoadMore: () => void }) {
+  const ref = React.useRef<HTMLDivElement>(null);
+  React.useEffect(() => {
+    const el = ref.current;
+    if (!el || !hasMore) return;
+    const io = new IntersectionObserver(([entry]) => entry.isIntersecting && onLoadMore(), { rootMargin: "400px 0px" });
+    io.observe(el);
+    return () => io.disconnect();
+    // `shown` re-arms the observer after each batch, so a still-visible footer keeps loading.
+  }, [hasMore, onLoadMore, shown]);
+
+  return (
+    <div ref={ref} className="flex flex-col items-center gap-2 border-t px-4 py-3 text-xs text-muted-foreground">
+      <span className="tabular">Showing {shown} of {total}</span>
+      {hasMore && (
+        <Button variant="outline" size="sm" onClick={onLoadMore}>
+          Load {Math.min(PAGE_SIZE, total - shown)} more
+        </Button>
+      )}
+    </div>
   );
 }
 

@@ -145,7 +145,7 @@ export function SettingsPage() {
                   <SelectTrigger id="s-view"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="grid">Grid (photo cards)</SelectItem>
-                    <SelectItem value="table">Table</SelectItem>
+                    <SelectItem value="table">List</SelectItem>
                   </SelectContent>
                 </Select>
               )} />

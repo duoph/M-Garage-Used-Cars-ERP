@@ -167,8 +167,15 @@
   * {
     @apply border-border outline-ring/50;
   }
+  /* App-like feel: no rubber-band bounce or pull-to-refresh past the page edges (Safari, iOS, Chrome). */
+  html,
+  body {
+    overscroll-behavior: none;
+  }
   html {
     -webkit-text-size-adjust: 100%;
+    /* Matches the page so any edge that does peek through is never white. */
+    background-color: var(--background);
   }
   body {
     @apply bg-background text-foreground antialiased;
