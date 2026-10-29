@@ -54,6 +54,27 @@ export async function preparePhoto(file: File, maxUploadMb: number): Promise<Pre
   }
 }
 
+const LOGO_MAX_EDGE = 512;
+
+/**
+ * Prepares a showroom logo: resized to fit 512px and saved as PNG, which keeps transparent backgrounds
+ * in every browser (Safari can't encode WebP, and JPEG would turn transparency black).
+ */
+export async function prepareLogo(file: File, maxUploadMb = 5): Promise<Blob> {
+  validatePhotoFile(file, maxUploadMb);
+  let bitmap: ImageBitmap;
+  try {
+    bitmap = await createImageBitmap(file, { imageOrientation: "from-image" });
+  } catch {
+    throw new PhotoValidationError(`${file.name}: the image appears to be corrupted.`);
+  }
+  try {
+    return (await render(bitmap, LOGO_MAX_EDGE, "image/png", 1)).blob;
+  } finally {
+    bitmap.close();
+  }
+}
+
 export function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;

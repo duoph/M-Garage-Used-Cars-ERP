@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import { makePaymentSchema, type PaymentInput } from "@/lib/validation/schemas";
 import { dealerService } from "@/lib/services/dealer-service";
 import { reportError } from "@/hooks/use-commands";
-import { useCurrentUser } from "@/hooks/use-auth";
+import { useAuth, useCurrentUser } from "@/hooks/use-auth";
 import { PAYMENT_METHODS, type Sale } from "@/types";
 import { PAYMENT_METHOD_LABELS } from "@/lib/utils/labels";
 import { todayISO } from "@/lib/utils/dates";
@@ -42,6 +42,7 @@ export function PaymentDialog({
 
 function PaymentForm({ sale, balancePaise, onDone, onRecorded }: { sale: Sale; balancePaise: number; onDone: () => void; onRecorded?: (id: string) => void }) {
   const user = useCurrentUser();
+  const { can } = useAuth();
   const form = useForm<PaymentInput>({
     resolver: zodResolver(makePaymentSchema(balancePaise)),
     defaultValues: { amountPaise: balancePaise, date: todayISO(), method: "bank_transfer", reference: "", notes: "" },
@@ -52,7 +53,11 @@ function PaymentForm({ sale, balancePaise, onDone, onRecorded }: { sale: Sale; b
   async function onSubmit(values: PaymentInput) {
     try {
       const id = await dealerService.recordPayment(user, sale.id, values);
-      toast.success(`Payment of ${formatINR(values.amountPaise)} recorded`);
+      // Offer the receipt straight away so it can be printed or shared while the customer is present.
+      toast.success(`Payment of ${formatINR(values.amountPaise)} recorded`, {
+        action: can("receipts.print") ? { label: "View receipt", onClick: () => window.open(`/receipt/${id}`, "_blank") } : undefined,
+        duration: 8000,
+      });
       onRecorded?.(id);
       onDone();
     } catch (e) {

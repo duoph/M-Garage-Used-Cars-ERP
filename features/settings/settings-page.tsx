@@ -7,7 +7,6 @@ import { Check, Database, Download, HardDrive, ImagePlus, RotateCcw, Trash2, Upl
 import { toast } from "sonner";
 import { useData } from "@/components/providers/data-provider";
 import { useCurrentUser } from "@/hooks/use-auth";
-import { useImageUrl } from "@/hooks/use-image-url";
 import { useSessionStore } from "@/lib/store/session";
 import { useUiStore } from "@/lib/store/ui";
 import { THEMES } from "@/lib/themes";
@@ -18,7 +17,7 @@ import { settingsSchema, type SettingsInput } from "@/lib/validation/schemas";
 import { getDb } from "@/lib/db/database";
 import { DEMO_USER_IDS, seedDatabase } from "@/lib/db/seed";
 import { clearBusinessData, exportBackup, importBackup } from "@/lib/db/backup";
-import { formatBytes, preparePhoto } from "@/lib/images/process";
+import { formatBytes, prepareLogo } from "@/lib/images/process";
 import { downloadFile } from "@/lib/utils/csv";
 import { formatDate, todayISO } from "@/lib/utils/dates";
 import { Button } from "@/components/ui/button";
@@ -30,7 +29,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { PageHeader } from "@/components/shared/page-header";
 import { Field } from "@/components/shared/form-field";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
-import { LogoMark } from "@/components/shared/logo";
+import { ShowroomLogo } from "@/components/shared/showroom-logo";
 
 export function SettingsSection({ title, description, children, footer }: { title: string; description: string; children: React.ReactNode; footer?: React.ReactNode }) {
   return (
@@ -222,7 +221,6 @@ function AppearanceSection() {
 function LogoField() {
   const { ds } = useData();
   const user = useCurrentUser();
-  const logo = useImageUrl(ds.settings.logoKey);
   const ref = React.useRef<HTMLInputElement>(null);
   const [busy, setBusy] = React.useState(false);
 
@@ -230,8 +228,7 @@ function LogoField() {
     if (!file) return;
     setBusy(true);
     try {
-      const prepared = await preparePhoto(file, 5);
-      await dealerService.setLogo(user, prepared.thumb);
+      await dealerService.setLogo(user, await prepareLogo(file));
       toast.success("Logo updated");
     } catch (e) {
       if (e instanceof Error && !(e.name === "BusinessError")) toast.error(e.message);
@@ -243,13 +240,8 @@ function LogoField() {
 
   return (
     <div className="flex items-center gap-4 sm:col-span-2">
-      <div className="flex size-16 items-center justify-center overflow-hidden rounded-xl border bg-[#fafbfc]">
-        {logo.url ? (
-          // eslint-disable-next-line @next/next/no-img-element -- blob URL
-          <img src={logo.url} alt="Showroom logo" className="size-full object-contain" />
-        ) : (
-          <LogoMark className="size-10" />
-        )}
+      <div className="flex size-16 shrink-0 items-center justify-center overflow-hidden rounded-xl border bg-card p-1">
+        <ShowroomLogo className="size-full" />
       </div>
       <div className="flex flex-wrap gap-2">
         <Button type="button" variant="outline" size="sm" loading={busy} onClick={() => ref.current?.click()}>
@@ -260,7 +252,7 @@ function LogoField() {
             Remove
           </Button>
         )}
-        <p className="w-full text-xs text-muted-foreground">Square PNG, JPEG or WebP works best. Printed on receipts.</p>
+        <p className="w-full text-xs text-muted-foreground">Your company logo, printed on every receipt. A square PNG with a transparent background works best.</p>
       </div>
       <input ref={ref} type="file" accept="image/png,image/jpeg,image/webp" className="sr-only" tabIndex={-1} aria-hidden onChange={(e) => { onFile(e.target.files?.[0]); e.target.value = ""; }} />
     </div>
