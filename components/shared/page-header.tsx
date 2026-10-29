@@ -53,7 +53,7 @@ export function PageHeader({
           <h1 className="text-lg font-semibold tracking-tight text-foreground sm:text-xl">{title}</h1>
           {description && <p className="mt-0.5 text-[13px] text-muted-foreground">{description}</p>}
         </div>
-        {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
+        {actions && <div className="flex flex-wrap items-center gap-2 sm:shrink-0 sm:flex-nowrap">{actions}</div>}
       </div>
       {children}
     </header>

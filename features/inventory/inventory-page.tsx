@@ -159,7 +159,7 @@ export function InventoryPage() {
             </div>
           </div>
           <FilterBar
-            search={<SearchInput value={filters.search} onChange={(v) => set("search", v)} placeholder="Search make, model, registration, stock no…" className="sm:w-full" size="sm" />}
+            search={<SearchInput value={filters.search} onChange={(v) => set("search", v)} placeholder="Search make, model, reg. no…" className="sm:w-full" size="sm" />}
             end={<div className="flex items-center gap-2 sm:hidden">{sortAndView}</div>}
           >
             <Select value={filters.fuel} onValueChange={(v) => set("fuel", v as InventoryFilters["fuel"])}>
@@ -202,7 +202,8 @@ export function InventoryPage() {
         ) : (
           <>
             {view === "grid" ? (
-              <div className="grid gap-3 p-3 sm:grid-cols-2 sm:p-4 xl:grid-cols-3 2xl:grid-cols-4">
+              <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,13.75rem),1fr))] gap-3 p-3 sm:gap-4 sm:p-4">
+                {/* As many ~220px+ columns as fit: 1 on phones, 2 on tablets, 4 on laptops, 5–6 on wide monitors. */}
                 {paged.visible.map((r) => <VehicleCard key={r.vehicle.id} view={r} />)}
               </div>
             ) : (

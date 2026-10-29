@@ -33,7 +33,7 @@ export function StickyBar({ className, children }: { className?: string; childre
 export function FilterBar({ search, children, end }: { search: React.ReactNode; children?: React.ReactNode; end?: React.ReactNode }) {
   return (
     <div className="flex flex-col gap-2 px-3 py-2 sm:flex-row sm:items-center sm:px-4">
-      <div className="min-w-0 sm:w-56 lg:w-64">{search}</div>
+      <div className="min-w-0 sm:w-60 lg:w-80">{search}</div>
       {/* py/-my keep focus rings visible inside the scrolling row. */}
       <div className="-mx-3 -my-0.5 flex min-w-0 flex-1 items-center gap-2 overflow-x-auto px-3 py-0.5 [scrollbar-width:none] *:shrink-0 sm:mx-0 sm:px-0.5">
         {children}
