@@ -22,6 +22,7 @@ import {
   makeSaleSchema,
   purchaseEditSchema,
   purchaseFormSchema,
+  quoteSchema,
   reservationSchema,
   settingsSchema,
   userSchema,
@@ -37,6 +38,7 @@ import type {
   Expense,
   ID,
   Purchase,
+  Quote,
   Reservation,
   Sale,
   SalePayment,
@@ -577,7 +579,7 @@ export function createDealerService(dbFactory: () => Db = getDb): DealerCommands
       const d = db();
       return d.transaction(
         "rw",
-        [d.vehicles, d.reservations, d.customers, d.sales, d.salePayments, d.counters, d.activity],
+        [d.vehicles, d.reservations, d.customers, d.sales, d.salePayments, d.quotes, d.counters, d.activity],
         async () => {
           const pre = rawInput as { reservationId?: string | null };
           const reservation = pre.reservationId ? await d.reservations.get(pre.reservationId) : undefined;
@@ -648,6 +650,11 @@ export function createDealerService(dbFactory: () => Db = getDb): DealerCommands
           if (activeReservation)
             await d.reservations.update(activeReservation.id, { status: "converted", saleId: sale.id, updatedAt: ts });
           await d.vehicles.update(vehicle.id, { status: "sold", updatedAt: ts });
+          if (input.quoteId) {
+            const quote = await d.quotes.get(input.quoteId);
+            if (quote && quote.vehicleId === vehicle.id && quote.status !== "accepted")
+              await d.quotes.update(quote.id, { status: "accepted", saleId: sale.id, updatedAt: ts });
+          }
           await log(d, actor, {
             entityType: "sale",
             entityId: sale.id,
@@ -723,6 +730,79 @@ export function createDealerService(dbFactory: () => Db = getDb): DealerCommands
           },
         });
         return payment.id;
+      });
+    },
+
+    async createQuote(actor, rawInput) {
+      authorize(actor, "sales.create");
+      const input = parse(quoteSchema, rawInput);
+      const d = db();
+      return d.transaction("rw", [d.quotes, d.vehicles, d.counters, d.activity], async () => {
+        const vehicle = await getOrThrow(d.vehicles.get(input.vehicleId), "Vehicle");
+        if (vehicle.archivedAt || vehicle.status === "sold") throw new BusinessError("This vehicle is no longer in stock.", "vehicleId");
+        if (vehicle.status === "reserved") throw new BusinessError("This vehicle is reserved for another buyer.", "vehicleId");
+        const ts = now();
+        const quote: Quote = {
+          id: newId(),
+          reference: await nextReference(d, "QUO"),
+          ...input,
+          customerPhone: input.customerPhone.replace(/[\s-]/g, ""),
+          status: "open",
+          saleId: null,
+          createdBy: actor.id,
+          createdAt: ts,
+          updatedAt: ts,
+        };
+        await d.quotes.add(quote);
+        await log(d, actor, {
+          entityType: "quote",
+          entityId: quote.id,
+          action: "quote.created",
+          description: `Quoted ${vehicleTitle(vehicle)} (${vehicle.registrationNumber}) to ${quote.customerName}`,
+          href: `/quote/${quote.id}`,
+        });
+        return quote.id;
+      });
+    },
+
+    async updateQuote(actor, quoteId, rawInput) {
+      authorize(actor, "sales.create");
+      const input = parse(quoteSchema, rawInput);
+      const d = db();
+      await d.transaction("rw", [d.quotes, d.vehicles, d.activity], async () => {
+        const quote = await getOrThrow(d.quotes.get(quoteId), "Quote");
+        if (!can(actor.role, "sales.viewAll") && quote.createdBy !== actor.id)
+          throw new BusinessError("You can only edit your own quotes.");
+        if (quote.status === "accepted") throw new BusinessError("This quote has already turned into a sale.");
+        const vehicle = await getOrThrow(d.vehicles.get(input.vehicleId), "Vehicle");
+        await d.quotes.update(quoteId, { ...input, customerPhone: input.customerPhone.replace(/[\s-]/g, ""), updatedAt: now() });
+        await log(d, actor, {
+          entityType: "quote",
+          entityId: quoteId,
+          action: "quote.updated",
+          description: `Updated quote ${quote.reference} for ${vehicleTitle(vehicle)}`,
+          href: `/quote/${quoteId}`,
+        });
+      });
+    },
+
+    async setQuoteStatus(actor, quoteId, status) {
+      authorize(actor, "sales.create");
+      const d = db();
+      await d.transaction("rw", [d.quotes, d.activity], async () => {
+        const quote = await getOrThrow(d.quotes.get(quoteId), "Quote");
+        if (!can(actor.role, "sales.viewAll") && quote.createdBy !== actor.id)
+          throw new BusinessError("You can only change your own quotes.");
+        if (quote.status === "accepted") throw new BusinessError("This quote has already turned into a sale.");
+        if (quote.status === status) return;
+        await d.quotes.update(quoteId, { status, updatedAt: now() });
+        await log(d, actor, {
+          entityType: "quote",
+          entityId: quoteId,
+          action: "quote.status_changed",
+          description: `${status === "declined" ? "Marked as declined" : "Reopened"} quote ${quote.reference} for ${quote.customerName}`,
+          href: `/quote/${quoteId}`,
+        });
       });
     },
 

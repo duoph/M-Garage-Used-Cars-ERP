@@ -53,6 +53,9 @@ export type ReservationStatus = (typeof RESERVATION_STATUSES)[number];
 export const SALE_STATUSES = ["completed", "cancelled"] as const;
 export type SaleStatus = (typeof SALE_STATUSES)[number];
 
+export const QUOTE_STATUSES = ["open", "accepted", "declined"] as const;
+export type QuoteStatus = (typeof QUOTE_STATUSES)[number];
+
 export const VEHICLE_EXPENSE_CATEGORIES = [
   "repair",
   "mechanical",
@@ -82,6 +85,7 @@ export const ENTITY_TYPES = [
   "reservation",
   "sale",
   "payment",
+  "quote",
   "expense",
   "user",
   "settings",
@@ -103,6 +107,9 @@ export const ACTIVITY_ACTIONS = [
   "sale.completed",
   "sale.cancelled",
   "payment.recorded",
+  "quote.created",
+  "quote.updated",
+  "quote.status_changed",
   "expense.created",
   "expense.updated",
   "expense.deleted",
@@ -249,6 +256,31 @@ export interface SalePayment extends Timestamps {
   /** "booking" payments originate from a reservation deposit. */
   kind: "booking" | "payment";
   recordedBy: ID;
+}
+
+/** A price offer for one vehicle. Extras (insurance, transfer, accessories) are added to the car price. */
+export interface Quote extends Timestamps {
+  id: ID;
+  reference: string;
+  vehicleId: ID;
+  customerName: string;
+  customerPhone: string;
+  customerAddress: string;
+  quoteDate: ISODate;
+  validUntil: ISODate;
+  vehiclePricePaise: Paise;
+  extras: QuoteExtra[];
+  discountPaise: Paise;
+  notes: string;
+  status: QuoteStatus;
+  /** Set when the quote turns into a sale. */
+  saleId: ID | null;
+  createdBy: ID;
+}
+
+export interface QuoteExtra {
+  description: string;
+  amountPaise: Paise;
 }
 
 export interface Expense extends Timestamps {

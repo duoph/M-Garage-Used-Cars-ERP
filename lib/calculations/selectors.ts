@@ -8,6 +8,7 @@ import type {
   ID,
   Paise,
   Purchase,
+  Quote,
   Reservation,
   Sale,
   SalePayment,
@@ -31,6 +32,7 @@ export interface Dataset {
   reservations: Reservation[];
   sales: Sale[];
   payments: SalePayment[];
+  quotes: Quote[];
   expenses: Expense[];
   activity: ActivityLog[];
   settings: BusinessSettings;

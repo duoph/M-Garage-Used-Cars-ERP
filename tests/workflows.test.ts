@@ -23,11 +23,11 @@ const purchaseInput = (over: Partial<PurchaseFormInput> = {}): PurchaseFormInput
 const buyer = { customerName: "Anand Pillai", customerPhone: "9000000001", customerAddress: "Kochi", customerNotes: "" };
 
 async function snapshot(): Promise<Dataset> {
-  const [users, vehicles, purchases, images, customers, reservations, salesRows, payments, expenses, activity, settings] = await Promise.all([
+  const [users, vehicles, purchases, images, customers, reservations, salesRows, payments, quotes, expenses, activity, settings] = await Promise.all([
     db.users.toArray(), db.vehicles.toArray(), db.purchases.toArray(), db.vehicleImages.toArray(), db.customers.toArray(),
-    db.reservations.toArray(), db.sales.toArray(), db.salePayments.toArray(), db.expenses.toArray(), db.activity.toArray(), db.settings.get("business"),
+    db.reservations.toArray(), db.sales.toArray(), db.salePayments.toArray(), db.quotes.toArray(), db.expenses.toArray(), db.activity.toArray(), db.settings.get("business"),
   ]);
-  return { users, vehicles, purchases, images, customers, reservations, sales: salesRows, payments, expenses, activity, settings: settings! };
+  return { users, vehicles, purchases, images, customers, reservations, sales: salesRows, payments, quotes, expenses, activity, settings: settings! };
 }
 
 beforeEach(async () => {
@@ -180,5 +180,43 @@ describe("users", () => {
     await svc.updateUser(admin, sales.id, { name: sales.name, email: sales.email, phone: sales.phone, role: "manager", status: "active" });
     expect((await db.users.get(sales.id))?.role).toBe("manager");
     expect(await db.activity.filter((a) => a.action === "user.role_changed").count()).toBe(1);
+  });
+});
+
+describe("quotes", () => {
+  const quoteInput = (vehicleId: string) => ({
+    vehicleId, customerName: "Meera Das", customerPhone: "98950 11223", customerAddress: "Kochi",
+    quoteDate: "2026-01-10", validUntil: "2026-01-25", vehiclePricePaise: 7_00_000_00,
+    extras: [{ description: "Insurance", amountPaise: 18_000_00 }], discountPaise: 5_000_00, notes: "",
+  });
+
+  it("creates a quote and marks it sold when a sale is recorded from it", async () => {
+    const { vehicleId } = await svc.createPurchase(admin, purchaseInput(), []);
+    const quoteId = await svc.createQuote(sales, quoteInput(vehicleId));
+    const quote = (await db.quotes.get(quoteId))!;
+    expect(quote.reference).toMatch(/^QUO-\d{4}-\d{4}$/);
+    expect(quote.customerPhone).toBe("9895011223");
+
+    const saleId = await svc.completeSale(sales, {
+      ...buyer, customerName: "Meera Das", customerPhone: "9895011223", vehicleId, reservationId: null, quoteId,
+      saleDate: "2026-01-12", salePricePaise: 7_13_000_00, amountReceivedPaise: 0, paymentMethod: "cash", paymentReference: "", notes: "",
+    });
+    expect(await db.quotes.get(quoteId)).toMatchObject({ status: "accepted", saleId });
+    await expect(svc.updateQuote(sales, quoteId, quoteInput(vehicleId))).rejects.toThrow(BusinessError);
+  });
+
+  it("rejects a discount larger than the total, and sold cars", async () => {
+    const { vehicleId } = await svc.createPurchase(admin, purchaseInput(), []);
+    await expect(svc.createQuote(sales, { ...quoteInput(vehicleId), discountPaise: 8_00_000_00 })).rejects.toThrow("Discount cannot exceed the total");
+    const sold = (await db.vehicles.where("status").equals("sold").first())!;
+    await expect(svc.createQuote(sales, quoteInput(sold.id))).rejects.toThrow("no longer in stock");
+  });
+
+  it("only lets sales staff change their own quotes", async () => {
+    const { vehicleId } = await svc.createPurchase(admin, purchaseInput(), []);
+    const quoteId = await svc.createQuote(admin, quoteInput(vehicleId));
+    await expect(svc.setQuoteStatus(sales, quoteId, "declined")).rejects.toThrow("your own quotes");
+    await svc.setQuoteStatus(admin, quoteId, "declined");
+    expect((await db.quotes.get(quoteId))?.status).toBe("declined");
   });
 });

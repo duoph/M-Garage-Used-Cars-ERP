@@ -2,7 +2,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { Ban, Plus, Printer, Receipt } from "lucide-react";
+import { Ban, FileText, Plus, Printer, Receipt } from "lucide-react";
 import { toast } from "sonner";
 import { useData } from "@/components/providers/data-provider";
 import { useAuth, useCurrentUser } from "@/hooks/use-auth";
@@ -72,6 +72,11 @@ export function SaleDetailPage() {
           <>
             {can("sales.cancel") && completed && (
               <Button variant="outline" onClick={() => setCancelling(true)}><Ban /> Cancel sale</Button>
+            )}
+            {can("receipts.print") && (
+              <Button variant="outline" asChild>
+                <Link href={`/invoice/${sale.id}`} target="_blank"><FileText /> Invoice</Link>
+              </Button>
             )}
             {can("receipts.print") && latest && (
               <Button variant="outline" asChild>

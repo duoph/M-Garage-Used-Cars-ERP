@@ -86,6 +86,8 @@ export const ROUTE_PERMISSIONS: { prefix: string; permission: Permission }[] = [
   { prefix: "/purchases/new", permission: "purchases.manage" },
   { prefix: "/purchases", permission: "purchases.view" },
   { prefix: "/sales/new", permission: "sales.create" },
+  { prefix: "/quotes/new", permission: "sales.create" },
+  { prefix: "/quotes", permission: "sales.view" },
   { prefix: "/sales", permission: "sales.view" },
   { prefix: "/expenses", permission: "expenses.view" },
   { prefix: "/reports", permission: "reports.view" },
@@ -93,6 +95,9 @@ export const ROUTE_PERMISSIONS: { prefix: string; permission: Permission }[] = [
   { prefix: "/activity", permission: "activity.view" },
   { prefix: "/settings", permission: "settings.manage" },
   { prefix: "/receipt", permission: "receipts.print" },
+  { prefix: "/invoice", permission: "receipts.print" },
+  { prefix: "/quote", permission: "receipts.print" },
+  { prefix: "/data", permission: "data.export" },
 ];
 
 export function canAccessPath(role: Role | null | undefined, pathname: string): boolean {

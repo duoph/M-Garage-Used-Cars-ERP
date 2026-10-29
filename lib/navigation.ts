@@ -1,7 +1,9 @@
 import {
   Activity,
   BarChart3,
+  ArrowDownUp,
   CarFront,
+  FileText,
   LayoutDashboard,
   Receipt,
   Settings,
@@ -30,11 +32,13 @@ export const NAV_ITEMS: NavItem[] = [
   { label: "Dashboard", href: "/", icon: LayoutDashboard, permission: "dashboard.view", section: "Overview", hint: "Today at a glance" },
   { label: "Inventory", href: "/inventory", icon: CarFront, permission: "inventory.view", section: "Showroom", hint: "Cars in stock" },
   { label: "Purchases", href: "/purchases", icon: ShoppingCart, permission: "purchases.view", section: "Showroom", hint: "Cars bought by the showroom" },
+  { label: "Quotes", href: "/quotes", icon: FileText, permission: "sales.view", section: "Showroom", hint: "Price quotes for buyers" },
   { label: "Sales", href: "/sales", icon: Receipt, permission: "sales.view", section: "Showroom", hint: "Cars sold and payments" },
   { label: "Expenses", href: "/expenses", icon: Wallet, permission: "expenses.view", section: "Finance", hint: "Repairs, rent, salaries…" },
   { label: "Reports", href: "/reports", icon: BarChart3, permission: "reports.view", section: "Finance", hint: "Sales, stock and profit" },
   { label: "Staff & Users", href: "/staff", icon: Users, permission: "users.manage", section: "Admin", hint: "Accounts and roles" },
   { label: "Activity Log", href: "/activity", icon: Activity, permission: "activity.view", section: "Admin", hint: "Who changed what" },
+  { label: "Import & export", href: "/data", icon: ArrowDownUp, permission: "data.export", section: "Admin", hint: "Excel and CSV files" },
   { label: "Settings", href: "/settings", icon: Settings, permission: "settings.manage", section: "Admin", hint: "Showroom profile and data" },
 ];
 

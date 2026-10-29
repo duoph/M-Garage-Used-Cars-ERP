@@ -2,7 +2,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Bell, LogOut, Menu, Plus, Receipt, Settings, ShoppingCart, UserRoundCog, Wallet } from "lucide-react";
+import { Bell, FileText, LogOut, Menu, Plus, Receipt, Settings, ShoppingCart, UserRoundCog, Wallet } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useData } from "@/components/providers/data-provider";
 import { useSessionStore } from "@/lib/store/session";
@@ -59,6 +59,11 @@ export function Topbar() {
             {can("purchases.manage") && (
               <DropdownMenuItem onSelect={() => router.push("/purchases/new")}>
                 <ShoppingCart /> Add purchase / vehicle
+              </DropdownMenuItem>
+            )}
+            {can("sales.create") && (
+              <DropdownMenuItem onSelect={() => router.push("/quotes/new")}>
+                <FileText /> New quote
               </DropdownMenuItem>
             )}
             {can("sales.create") && (

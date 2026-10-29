@@ -14,6 +14,11 @@ export function formatReference(prefix: string, year: number, seq: number): stri
   return `${prefix}-${year}-${String(seq).padStart(4, "0")}`;
 }
 
+/** Invoice number for a sale: SAL-2026-0012 → INV-2026-0012. */
+export function invoiceNumber(saleReference: string): string {
+  return saleReference.replace(/^SAL/, "INV");
+}
+
 /** Normalises registration numbers for duplicate detection: "KL 07 cd-4521" → "KL07CD4521". */
 export function normalizeRegistration(value: string): string {
   return value.toUpperCase().replace(/[^A-Z0-9]/g, "");

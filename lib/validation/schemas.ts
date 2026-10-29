@@ -158,6 +158,8 @@ export const makeSaleSchema = (bookingPaise: number) =>
     .extend({
       vehicleId: z.string().min(1, "Select a vehicle"),
       reservationId: z.string().nullable(),
+      /** The quote this sale came from, if any; it is marked accepted. */
+      quoteId: z.string().nullable().optional(),
       saleDate: pastOrTodayDate,
       salePricePaise: positivePaise("Sale price"),
       amountReceivedPaise: paise("Amount received"),
@@ -193,6 +195,35 @@ export const makePaymentSchema = (balancePaise: number) =>
     notes: optionalText(300),
   });
 export type PaymentInput = z.infer<ReturnType<typeof makePaymentSchema>>;
+
+export const quoteSchema = z
+  .object({
+    vehicleId: z.string().min(1, "Select a vehicle"),
+    customerName: z.string().trim().min(2, "Customer name is required").max(80),
+    customerPhone: indianPhone,
+    customerAddress: optionalText(200),
+    quoteDate: pastOrTodayDate,
+    validUntil: isoDate,
+    vehiclePricePaise: positivePaise("Vehicle price"),
+    extras: z
+      .array(
+        z.object({
+          description: z.string().trim().min(1, "Describe this charge").max(80),
+          amountPaise: positivePaise("Amount"),
+        }),
+      )
+      .max(10, "Up to 10 extra charges"),
+    discountPaise: paise("Discount"),
+    notes: optionalText(500),
+  })
+  .superRefine((v, ctx) => {
+    if (v.validUntil < v.quoteDate)
+      ctx.addIssue({ code: "custom", path: ["validUntil"], message: "Must be on or after the quote date" });
+    const gross = v.vehiclePricePaise + v.extras.reduce((a, e) => a + (e.amountPaise || 0), 0);
+    if (v.discountPaise > gross)
+      ctx.addIssue({ code: "custom", path: ["discountPaise"], message: "Discount cannot exceed the total" });
+  });
+export type QuoteInput = z.infer<typeof quoteSchema>;
 
 export function isVehicleCategory(c: ExpenseCategory): boolean {
   return (VEHICLE_EXPENSE_CATEGORIES as readonly string[]).includes(c);

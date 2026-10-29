@@ -7,6 +7,7 @@ import type {
   Expense,
   ImageBlobRecord,
   Purchase,
+  Quote,
   Reservation,
   Sale,
   SalePayment,
@@ -30,6 +31,7 @@ export class DealerDatabase extends Dexie {
   reservations!: EntityTable<Reservation, "id">;
   sales!: EntityTable<Sale, "id">;
   salePayments!: EntityTable<SalePayment, "id">;
+  quotes!: EntityTable<Quote, "id">;
   expenses!: EntityTable<Expense, "id">;
   activity!: EntityTable<ActivityLog, "id">;
   settings!: EntityTable<BusinessSettings, "id">;
@@ -54,6 +56,7 @@ export class DealerDatabase extends Dexie {
       counters: "key",
       meta: "key",
     });
+    this.version(2).stores({ quotes: "id, vehicleId, status, quoteDate, reference" });
   }
 }
 
@@ -78,6 +81,7 @@ export const DATA_TABLES = [
   "reservations",
   "sales",
   "salePayments",
+  "quotes",
   "expenses",
   "activity",
   "settings",

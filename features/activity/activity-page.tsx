@@ -23,6 +23,7 @@ const ENTITY_LABELS: Record<EntityType, string> = {
   reservation: "Reservations",
   sale: "Sales",
   payment: "Payments",
+  quote: "Quotes",
   expense: "Expenses",
   user: "Users",
   settings: "Settings & data",
