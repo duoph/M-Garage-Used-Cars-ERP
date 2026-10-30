@@ -182,7 +182,7 @@ export interface Purchase extends Timestamps {
 export interface VehicleImage extends Timestamps {
   id: ID;
   vehicleId: ID;
-  /** Key into the image blob store (IndexedDB now, Cloudflare R2 later). */
+  /** Key into the image store: `r2:`-prefixed keys are in Cloudflare R2, others are IndexedDB blobs. */
   storageKey: string;
   thumbKey: string;
   mimeType: string;
@@ -193,15 +193,6 @@ export interface VehicleImage extends Timestamps {
   order: number;
   isCover: boolean;
   isPlaceholder: boolean;
-  /** Credit for third-party photos (e.g. Creative Commons demo images). */
-  attribution?: PhotoAttribution | null;
-}
-
-export interface PhotoAttribution {
-  author: string;
-  license: string;
-  licenseUrl: string;
-  source: string;
 }
 
 export interface Customer extends Timestamps {

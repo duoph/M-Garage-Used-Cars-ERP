@@ -2,7 +2,7 @@
 import * as React from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { getDb } from "@/lib/db/database";
-import { ensureSeeded, upgradeDemoPhotos } from "@/lib/db/seed";
+import { ensureInitialized } from "@/lib/db/bootstrap";
 import { indexDataset, type Dataset, type DatasetIndex } from "@/lib/calculations/selectors";
 import { setPreferredDateFormat } from "@/lib/utils/dates";
 import { BootScreen } from "@/components/shared/boot-screen";
@@ -16,14 +16,10 @@ interface DataContextValue {
 
 const DataContext = React.createContext<DataContextValue | null>(null);
 
-let seedPromise: Promise<boolean> | null = null;
-function seedOnce() {
-  seedPromise ??= ensureSeeded(getDb()).then((seeded) => {
-    // Non-blocking: swap old placeholder demo images for the bundled real photos.
-    upgradeDemoPhotos(getDb()).catch((e: unknown) => console.warn("Demo photo upgrade skipped", e));
-    return seeded;
-  });
-  return seedPromise;
+let initPromise: Promise<void> | null = null;
+function initOnce() {
+  initPromise ??= ensureInitialized(getDb());
+  return initPromise;
 }
 
 async function loadDataset(): Promise<Dataset | null> {
@@ -57,7 +53,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const [error, setError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
-    seedOnce()
+    initOnce()
       .then(() => setSeeded(true))
       .catch((e: unknown) => {
         console.error(e);

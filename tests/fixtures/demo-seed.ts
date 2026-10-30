@@ -1,8 +1,5 @@
 import { addDays, format, setHours, setMinutes, startOfMonth, subDays, subMonths } from "date-fns";
 import type { DealerDatabase } from "@/lib/db/database";
-import type { BodyStyle } from "@/lib/images/placeholder";
-import { DEMO_PHOTOS } from "@/lib/images/demo-photos";
-import { DEMO_PHOTOS_VERSION, loadDemoPhotos, planDemoPhotos, type DemoPhotoPlan } from "./demo-photos-loader";
 import { formatReference, newId } from "@/lib/utils/ids";
 import { formatINR } from "@/lib/utils/money";
 import { EXPENSE_CATEGORY_LABELS } from "@/lib/utils/labels";
@@ -22,8 +19,11 @@ import type {
   Transmission,
   User,
   Vehicle,
-  VehicleImage,
 } from "@/types";
+
+/**
+ * Sample showroom used only by the test suite (no photos). The app itself starts empty; see lib/db/bootstrap.ts.
+ */
 
 /** Deterministic PRNG so demo data is identical on every reset. */
 function mulberry32(seed: number) {
@@ -50,8 +50,7 @@ interface VehicleSeed {
   make: string;
   model: string;
   variant: string;
-  style: BodyStyle;
-  /** Key into DEMO_PHOTOS (real photos bundled in /public/demo-cars). */
+  /** Model key into VARIANTS for the generated extra cars. */
   photo: string;
   year: number;
   fuel: FuelType;
@@ -96,28 +95,28 @@ const SELLERS: { name: string; phone: string; address: string }[] = [
 ];
 
 const VEHICLES: VehicleSeed[] = [
-  { photo: "baleno", make: "Maruti Suzuki", model: "Baleno", variant: "Zeta 1.2", style: "hatch", year: 2021, fuel: "petrol", trans: "manual", km: 28400, color: "Blue", owners: 1, reg: "KL 07 CF 4521", chassis: "MA3EWDE1S00412345", asking: 6.85, purchasedDaysAgo: 150, outcome: { kind: "sold", daysAgo: 120, discount: 0.15, paidPct: 1, buyer: 0 } },
-  { photo: "creta20", make: "Hyundai", model: "Creta", variant: "SX 1.5 Diesel", style: "suv", year: 2020, fuel: "diesel", trans: "manual", km: 46200, color: "White", owners: 1, reg: "KL 39 K 7788", chassis: "MALC381CLLM112233", asking: 13.75, purchasedDaysAgo: 140, outcome: { kind: "sold", daysAgo: 104, discount: 0.25, paidPct: 1, buyer: 1 } },
-  { photo: "nexon", make: "Tata", model: "Nexon", variant: "XZ+ Petrol", style: "suv", year: 2022, fuel: "petrol", trans: "manual", km: 18750, color: "Red", owners: 1, reg: "KL 07 CU 2290", chassis: "MAT627513NKA55678", asking: 9.45, purchasedDaysAgo: 128, outcome: { kind: "sold", daysAgo: 92, discount: 0.2, paidPct: 1, buyer: 2 } },
-  { photo: "city19", make: "Honda", model: "City", variant: "V CVT", style: "sedan", year: 2019, fuel: "petrol", trans: "cvt", km: 52300, color: "Silver", owners: 2, reg: "KA 03 MN 6612", chassis: "MAKGM657JKN300112", asking: 9.25, purchasedDaysAgo: 118, outcome: { kind: "sold", daysAgo: 70, discount: 0.15, paidPct: 1, buyer: 3 } },
-  { photo: "seltos", make: "Kia", model: "Seltos", variant: "HTX 1.5 iVT", style: "suv", year: 2021, fuel: "petrol", trans: "cvt", km: 33100, color: "Grey", owners: 1, reg: "KL 41 H 9004", chassis: "MZBEN813LMN045671", asking: 14.6, purchasedDaysAgo: 96, outcome: { kind: "sold", daysAgo: 58, discount: 0.3, paidPct: 1, buyer: 4 } },
-  { photo: "innova", make: "Toyota", model: "Innova Crysta", variant: "2.4 VX 7S", style: "mpv", year: 2019, fuel: "diesel", trans: "manual", km: 88400, color: "Silver", owners: 1, reg: "KL 05 AX 1188", chassis: "MBJAA3GM40021445", asking: 18.9, purchasedDaysAgo: 82, outcome: { kind: "sold", daysAgo: 40, discount: 0.4, paidPct: 0.72, buyer: 5 } },
-  { photo: "swift", make: "Maruti Suzuki", model: "Swift", variant: "VXi AMT", style: "hatch", year: 2022, fuel: "petrol", trans: "amt", km: 15600, color: "Red", owners: 1, reg: "KL 07 DA 3321", chassis: "MA3ZSF41S00987612", asking: 6.4, purchasedDaysAgo: 60, outcome: { kind: "sold", daysAgo: "thisMonth", thisMonthOffset: 18, discount: 0.1, paidPct: 1, buyer: 6 } },
-  { photo: "polo", make: "Volkswagen", model: "Polo", variant: "Highline Plus 1.0 TSI", style: "hatch", year: 2020, fuel: "petrol", trans: "manual", km: 41250, color: "White", owners: 2, reg: "TN 09 BZ 4410", chassis: "WVWZZZ6RZLY21877", asking: 6.25, purchasedDaysAgo: 52, outcome: { kind: "sold", daysAgo: "thisMonth", thisMonthOffset: 11, discount: 0.15, paidPct: 0.6, buyer: 7 } },
-  { photo: "slavia", make: "Skoda", model: "Slavia", variant: "Style 1.5 TSI DSG", style: "sedan", year: 2023, fuel: "petrol", trans: "dct", km: 12900, color: "Grey", owners: 1, reg: "KL 07 DE 7070", chassis: "TMBJR6NJ2P8001234", asking: 15.2, purchasedDaysAgo: 34, outcome: { kind: "sold", daysAgo: "thisMonth", thisMonthOffset: 4, discount: 0.2, paidPct: 1, buyer: 8 } },
-  { photo: "i20", make: "Hyundai", model: "i20", variant: "Asta (O) 1.2", style: "hatch", year: 2021, fuel: "petrol", trans: "manual", km: 26800, color: "Blue", owners: 1, reg: "KL 43 F 5512", chassis: "MALBM51RLMM55301", asking: 7.95, purchasedDaysAgo: 30, outcome: { kind: "sold", daysAgo: "thisMonth", thisMonthOffset: 1, discount: 0.1, paidPct: 0.35, buyer: 9 } },
-  { photo: "xuv300", make: "Mahindra", model: "XUV300", variant: "W8 (O) Diesel", style: "suv", year: 2021, fuel: "diesel", trans: "manual", km: 39400, color: "Orange", owners: 1, reg: "KL 08 BQ 6634", chassis: "MA1NE2HTXM2B41120", asking: 9.85, purchasedDaysAgo: 44, outcome: { kind: "reserved", daysAgo: 6, booking: 0.5, buyer: 10 } },
-  { photo: "creta22", make: "Hyundai", model: "Creta", variant: "SX (O) 1.5 Turbo DCT", style: "suv", year: 2022, fuel: "petrol", trans: "dct", km: 21300, color: "Black", owners: 1, reg: "KL 07 CZ 1001", chassis: "MALC381CLNM778812", asking: 17.4, purchasedDaysAgo: 26, outcome: { kind: "reserved", daysAgo: 3, booking: 1, buyer: 11 } },
-  { photo: "brezza", make: "Maruti Suzuki", model: "Brezza", variant: "ZXi Plus", style: "suv", year: 2023, fuel: "petrol", trans: "manual", km: 9800, color: "Brown", owners: 1, reg: "KL 40 M 2323", chassis: "MA3NYFB1S00334578", asking: 11.35, purchasedDaysAgo: 18, outcome: { kind: "reserved", daysAgo: 1, booking: 0.25, buyer: 0 } },
-  { photo: "kwid", make: "Renault", model: "Kwid", variant: "RXT 1.0", style: "hatch", year: 2020, fuel: "petrol", trans: "manual", km: 31200, color: "Orange", owners: 1, reg: "KL 07 BX 8890", chassis: "MEEBBA001L3201145", asking: 3.45, purchasedDaysAgo: 75, outcome: { kind: "available" } },
-  { photo: "cityhev", make: "Honda", model: "City", variant: "ZX e:HEV", style: "sedan", year: 2023, fuel: "hybrid", trans: "cvt", km: 14500, color: "White", owners: 1, reg: "KL 07 DF 5005", chassis: "MAKGN6S43PN100221", asking: 17.95, purchasedDaysAgo: 22, outcome: { kind: "available" } },
-  { photo: "nexonev", make: "Tata", model: "Nexon EV", variant: "Max XZ+ Lux", style: "suv", year: 2022, fuel: "electric", trans: "automatic", km: 27600, color: "Blue", owners: 1, reg: "KL 07 CY 9191", chassis: "MAT627602NKB10022", asking: 13.25, purchasedDaysAgo: 38, outcome: { kind: "available" } },
-  { photo: "sonet", make: "Kia", model: "Sonet", variant: "HTX 1.0 Turbo iMT", style: "suv", year: 2021, fuel: "petrol", trans: "manual", km: 30500, color: "Red", owners: 1, reg: "KL 51 E 4040", chassis: "MZBEP813LMN066121", asking: 8.95, purchasedDaysAgo: 15, outcome: { kind: "available" } },
-  { photo: "dzire", make: "Maruti Suzuki", model: "Dzire", variant: "VXi CNG", style: "sedan", year: 2022, fuel: "cng", trans: "manual", km: 48900, color: "Silver", owners: 1, reg: "KL 07 CV 3412", chassis: "MA3FJEB1S00556677", asking: 6.75, purchasedDaysAgo: 11, outcome: { kind: "available" } },
-  { photo: "glanza", make: "Toyota", model: "Glanza", variant: "V AMT", style: "hatch", year: 2022, fuel: "petrol", trans: "amt", km: 22100, color: "Grey", owners: 1, reg: "KA 51 MR 1290", chassis: "MBJB29BT400112098", asking: 7.4, purchasedDaysAgo: 8, outcome: { kind: "available" } },
-  { photo: "thar", make: "Mahindra", model: "Thar", variant: "LX 4WD Diesel AT", style: "suv", year: 2021, fuel: "diesel", trans: "automatic", km: 36700, color: "Black", owners: 1, reg: "KL 10 AZ 7007", chassis: "MA1TA2YD3M2F10345", asking: 14.8, purchasedDaysAgo: 98, outcome: { kind: "available" } },
-  { photo: "kushaq", make: "Skoda", model: "Kushaq", variant: "Ambition 1.0 TSI", style: "suv", year: 2022, fuel: "petrol", trans: "manual", km: 24800, color: "White", owners: 1, reg: "KL 07 DB 6160", chassis: "TMBLJ9NS1N8004410", asking: 11.6, purchasedDaysAgo: 5, outcome: { kind: "available" } },
-  { photo: "venue", make: "Hyundai", model: "Venue", variant: "S(O) 1.2", style: "suv", year: 2020, fuel: "petrol", trans: "manual", km: 43900, color: "Grey", owners: 2, reg: "KL 17 R 3331", chassis: "MALCU41ULLM20118", asking: 7.65, purchasedDaysAgo: 2, outcome: { kind: "available" } },
+  { photo: "baleno", make: "Maruti Suzuki", model: "Baleno", variant: "Zeta 1.2", year: 2021, fuel: "petrol", trans: "manual", km: 28400, color: "Blue", owners: 1, reg: "KL 07 CF 4521", chassis: "MA3EWDE1S00412345", asking: 6.85, purchasedDaysAgo: 150, outcome: { kind: "sold", daysAgo: 120, discount: 0.15, paidPct: 1, buyer: 0 } },
+  { photo: "creta20", make: "Hyundai", model: "Creta", variant: "SX 1.5 Diesel", year: 2020, fuel: "diesel", trans: "manual", km: 46200, color: "White", owners: 1, reg: "KL 39 K 7788", chassis: "MALC381CLLM112233", asking: 13.75, purchasedDaysAgo: 140, outcome: { kind: "sold", daysAgo: 104, discount: 0.25, paidPct: 1, buyer: 1 } },
+  { photo: "nexon", make: "Tata", model: "Nexon", variant: "XZ+ Petrol", year: 2022, fuel: "petrol", trans: "manual", km: 18750, color: "Red", owners: 1, reg: "KL 07 CU 2290", chassis: "MAT627513NKA55678", asking: 9.45, purchasedDaysAgo: 128, outcome: { kind: "sold", daysAgo: 92, discount: 0.2, paidPct: 1, buyer: 2 } },
+  { photo: "city19", make: "Honda", model: "City", variant: "V CVT", year: 2019, fuel: "petrol", trans: "cvt", km: 52300, color: "Silver", owners: 2, reg: "KA 03 MN 6612", chassis: "MAKGM657JKN300112", asking: 9.25, purchasedDaysAgo: 118, outcome: { kind: "sold", daysAgo: 70, discount: 0.15, paidPct: 1, buyer: 3 } },
+  { photo: "seltos", make: "Kia", model: "Seltos", variant: "HTX 1.5 iVT", year: 2021, fuel: "petrol", trans: "cvt", km: 33100, color: "Grey", owners: 1, reg: "KL 41 H 9004", chassis: "MZBEN813LMN045671", asking: 14.6, purchasedDaysAgo: 96, outcome: { kind: "sold", daysAgo: 58, discount: 0.3, paidPct: 1, buyer: 4 } },
+  { photo: "innova", make: "Toyota", model: "Innova Crysta", variant: "2.4 VX 7S", year: 2019, fuel: "diesel", trans: "manual", km: 88400, color: "Silver", owners: 1, reg: "KL 05 AX 1188", chassis: "MBJAA3GM40021445", asking: 18.9, purchasedDaysAgo: 82, outcome: { kind: "sold", daysAgo: 40, discount: 0.4, paidPct: 0.72, buyer: 5 } },
+  { photo: "swift", make: "Maruti Suzuki", model: "Swift", variant: "VXi AMT", year: 2022, fuel: "petrol", trans: "amt", km: 15600, color: "Red", owners: 1, reg: "KL 07 DA 3321", chassis: "MA3ZSF41S00987612", asking: 6.4, purchasedDaysAgo: 60, outcome: { kind: "sold", daysAgo: "thisMonth", thisMonthOffset: 18, discount: 0.1, paidPct: 1, buyer: 6 } },
+  { photo: "polo", make: "Volkswagen", model: "Polo", variant: "Highline Plus 1.0 TSI", year: 2020, fuel: "petrol", trans: "manual", km: 41250, color: "White", owners: 2, reg: "TN 09 BZ 4410", chassis: "WVWZZZ6RZLY21877", asking: 6.25, purchasedDaysAgo: 52, outcome: { kind: "sold", daysAgo: "thisMonth", thisMonthOffset: 11, discount: 0.15, paidPct: 0.6, buyer: 7 } },
+  { photo: "slavia", make: "Skoda", model: "Slavia", variant: "Style 1.5 TSI DSG", year: 2023, fuel: "petrol", trans: "dct", km: 12900, color: "Grey", owners: 1, reg: "KL 07 DE 7070", chassis: "TMBJR6NJ2P8001234", asking: 15.2, purchasedDaysAgo: 34, outcome: { kind: "sold", daysAgo: "thisMonth", thisMonthOffset: 4, discount: 0.2, paidPct: 1, buyer: 8 } },
+  { photo: "i20", make: "Hyundai", model: "i20", variant: "Asta (O) 1.2", year: 2021, fuel: "petrol", trans: "manual", km: 26800, color: "Blue", owners: 1, reg: "KL 43 F 5512", chassis: "MALBM51RLMM55301", asking: 7.95, purchasedDaysAgo: 30, outcome: { kind: "sold", daysAgo: "thisMonth", thisMonthOffset: 1, discount: 0.1, paidPct: 0.35, buyer: 9 } },
+  { photo: "xuv300", make: "Mahindra", model: "XUV300", variant: "W8 (O) Diesel", year: 2021, fuel: "diesel", trans: "manual", km: 39400, color: "Orange", owners: 1, reg: "KL 08 BQ 6634", chassis: "MA1NE2HTXM2B41120", asking: 9.85, purchasedDaysAgo: 44, outcome: { kind: "reserved", daysAgo: 6, booking: 0.5, buyer: 10 } },
+  { photo: "creta22", make: "Hyundai", model: "Creta", variant: "SX (O) 1.5 Turbo DCT", year: 2022, fuel: "petrol", trans: "dct", km: 21300, color: "Black", owners: 1, reg: "KL 07 CZ 1001", chassis: "MALC381CLNM778812", asking: 17.4, purchasedDaysAgo: 26, outcome: { kind: "reserved", daysAgo: 3, booking: 1, buyer: 11 } },
+  { photo: "brezza", make: "Maruti Suzuki", model: "Brezza", variant: "ZXi Plus", year: 2023, fuel: "petrol", trans: "manual", km: 9800, color: "Brown", owners: 1, reg: "KL 40 M 2323", chassis: "MA3NYFB1S00334578", asking: 11.35, purchasedDaysAgo: 18, outcome: { kind: "reserved", daysAgo: 1, booking: 0.25, buyer: 0 } },
+  { photo: "kwid", make: "Renault", model: "Kwid", variant: "RXT 1.0", year: 2020, fuel: "petrol", trans: "manual", km: 31200, color: "Orange", owners: 1, reg: "KL 07 BX 8890", chassis: "MEEBBA001L3201145", asking: 3.45, purchasedDaysAgo: 75, outcome: { kind: "available" } },
+  { photo: "cityhev", make: "Honda", model: "City", variant: "ZX e:HEV", year: 2023, fuel: "hybrid", trans: "cvt", km: 14500, color: "White", owners: 1, reg: "KL 07 DF 5005", chassis: "MAKGN6S43PN100221", asking: 17.95, purchasedDaysAgo: 22, outcome: { kind: "available" } },
+  { photo: "nexonev", make: "Tata", model: "Nexon EV", variant: "Max XZ+ Lux", year: 2022, fuel: "electric", trans: "automatic", km: 27600, color: "Blue", owners: 1, reg: "KL 07 CY 9191", chassis: "MAT627602NKB10022", asking: 13.25, purchasedDaysAgo: 38, outcome: { kind: "available" } },
+  { photo: "sonet", make: "Kia", model: "Sonet", variant: "HTX 1.0 Turbo iMT", year: 2021, fuel: "petrol", trans: "manual", km: 30500, color: "Red", owners: 1, reg: "KL 51 E 4040", chassis: "MZBEP813LMN066121", asking: 8.95, purchasedDaysAgo: 15, outcome: { kind: "available" } },
+  { photo: "dzire", make: "Maruti Suzuki", model: "Dzire", variant: "VXi CNG", year: 2022, fuel: "cng", trans: "manual", km: 48900, color: "Silver", owners: 1, reg: "KL 07 CV 3412", chassis: "MA3FJEB1S00556677", asking: 6.75, purchasedDaysAgo: 11, outcome: { kind: "available" } },
+  { photo: "glanza", make: "Toyota", model: "Glanza", variant: "V AMT", year: 2022, fuel: "petrol", trans: "amt", km: 22100, color: "Grey", owners: 1, reg: "KA 51 MR 1290", chassis: "MBJB29BT400112098", asking: 7.4, purchasedDaysAgo: 8, outcome: { kind: "available" } },
+  { photo: "thar", make: "Mahindra", model: "Thar", variant: "LX 4WD Diesel AT", year: 2021, fuel: "diesel", trans: "automatic", km: 36700, color: "Black", owners: 1, reg: "KL 10 AZ 7007", chassis: "MA1TA2YD3M2F10345", asking: 14.8, purchasedDaysAgo: 98, outcome: { kind: "available" } },
+  { photo: "kushaq", make: "Skoda", model: "Kushaq", variant: "Ambition 1.0 TSI", year: 2022, fuel: "petrol", trans: "manual", km: 24800, color: "White", owners: 1, reg: "KL 07 DB 6160", chassis: "TMBLJ9NS1N8004410", asking: 11.6, purchasedDaysAgo: 5, outcome: { kind: "available" } },
+  { photo: "venue", make: "Hyundai", model: "Venue", variant: "S(O) 1.2", year: 2020, fuel: "petrol", trans: "manual", km: 43900, color: "Grey", owners: 2, reg: "KL 17 R 3331", chassis: "MALCU41ULLM20118", asking: 7.65, purchasedDaysAgo: 2, outcome: { kind: "available" } },
 ];
 
 /** Trims per model, so repeat cars differ in spec as well as year, km and numbers. `adj` scales the price. */
@@ -273,12 +272,11 @@ export function demoUsers(nowIso: string): User[] {
 }
 
 export interface SeedOptions {
-  withImages?: boolean;
   now?: Date;
 }
 
 /** Builds the full demo dataset in memory. */
-export function buildDemoData({ withImages = true, now = new Date() }: SeedOptions = {}) {
+export function buildDemoData({ now = new Date() }: SeedOptions = {}) {
   const rand = mulberry32(20261027);
   // Generated cars draw from their own stream so the hand-written cars and monthly expenses stay identical.
   const extraRand = mulberry32(20261029);
@@ -290,7 +288,6 @@ export function buildDemoData({ withImages = true, now = new Date() }: SeedOptio
 
   const vehicles: Vehicle[] = [];
   const purchases: Purchase[] = [];
-  const photoPlans: DemoPhotoPlan[] = [];
   const customers = new Map<number, Customer>();
   const reservations: Reservation[] = [];
   const sales: Sale[] = [];
@@ -341,7 +338,7 @@ export function buildDemoData({ withImages = true, now = new Date() }: SeedOptio
       transmission: s.trans,
       mileageKm: s.km,
       // Match the colour shown in the real demo photos.
-      color: DEMO_PHOTOS[s.photo]?.color ?? s.color,
+      color: s.color,
       previousOwners: s.owners,
       askingPricePaise: askingPaise,
       status: "available",
@@ -372,12 +369,6 @@ export function buildDemoData({ withImages = true, now = new Date() }: SeedOptio
       createdAt: created,
       updatedAt: created,
     };
-
-    if (withImages) {
-      const plan = planDemoPhotos({ vehicleId, slug: s.photo, title: `${s.year} ${s.make} ${s.model}`, color: vehicle.color, style: s.style, createdAt: created });
-      photoPlans.push(plan);
-      vehicle.coverImageId = plan.images[0]?.id ?? null;
-    }
 
     act({ actorId: purchase.createdBy, entityType: "purchase", entityId: purchaseId, action: "purchase.created", timestamp: created,
       description: `Purchased ${s.year} ${s.make} ${s.model} (${s.reg}) from ${seller.name}`, href: `/purchases/${purchaseId}`,
@@ -543,7 +534,6 @@ export function buildDemoData({ withImages = true, now = new Date() }: SeedOptio
     users,
     vehicles,
     purchases,
-    photoPlans,
     customers: [...customers.values()],
     reservations,
     sales,
@@ -558,17 +548,11 @@ export function buildDemoData({ withImages = true, now = new Date() }: SeedOptio
 
 export async function seedDatabase(db: DealerDatabase, opts: SeedOptions = {}) {
   const data = buildDemoData(opts);
-  // Photos are fetched before the transaction: IndexedDB transactions can't span network calls.
-  const loaded = await Promise.all(data.photoPlans.map(loadDemoPhotos));
-  const vehicleImages = loaded.flatMap((l) => l.images);
-  const imageBlobs = loaded.flatMap((l) => l.blobs);
   await db.transaction("rw", db.tables, async () => {
     await Promise.all(db.tables.map((t) => t.clear()));
     await db.users.bulkAdd(data.users);
     await db.vehicles.bulkAdd(data.vehicles);
     await db.purchases.bulkAdd(data.purchases);
-    await db.vehicleImages.bulkAdd(vehicleImages);
-    await db.imageBlobs.bulkAdd(imageBlobs);
     await db.customers.bulkAdd(data.customers);
     await db.reservations.bulkAdd(data.reservations);
     await db.sales.bulkAdd(data.sales);
@@ -579,52 +563,5 @@ export async function seedDatabase(db: DealerDatabase, opts: SeedOptions = {}) {
     await db.settings.bulkAdd(data.settings);
     await db.counters.bulkAdd(data.counters);
     await db.meta.put({ key: "seededAt", value: new Date().toISOString() });
-    await db.meta.put({ key: "demoPhotos", value: DEMO_PHOTOS_VERSION });
   });
-}
-
-/** Seeds the database exactly once per browser profile. */
-export async function ensureSeeded(db: DealerDatabase) {
-  const seeded = await db.meta.get("seededAt");
-  if (seeded) return false;
-  await seedDatabase(db);
-  return true;
-}
-
-/**
- * One-time upgrade for browsers seeded before real demo photos existed: vehicles that still
- * only have generated placeholder images get the bundled real photos. User-added photos are never touched.
- */
-export async function upgradeDemoPhotos(db: DealerDatabase): Promise<number> {
-  const marker = await db.meta.get("demoPhotos");
-  if (marker?.value === DEMO_PHOTOS_VERSION) return 0;
-  const [vehicles, allImages] = await Promise.all([db.vehicles.toArray(), db.vehicleImages.toArray()]);
-  const bySeedReg = new Map(VEHICLES.map((v) => [v.reg, v]));
-  const work: { vehicleId: string; color: string; oldImages: VehicleImage[]; plan: DemoPhotoPlan }[] = [];
-  for (const v of vehicles) {
-    const seed = bySeedReg.get(v.registrationNumber);
-    const imgs = allImages.filter((i) => i.vehicleId === v.id);
-    if (!seed || !DEMO_PHOTOS[seed.photo] || (imgs.length > 0 && !imgs.every((i) => i.isPlaceholder))) continue;
-    const color = DEMO_PHOTOS[seed.photo].color;
-    work.push({
-      vehicleId: v.id,
-      color,
-      oldImages: imgs,
-      plan: planDemoPhotos({ vehicleId: v.id, slug: seed.photo, title: `${v.year} ${v.make} ${v.model}`, color, style: seed.style, createdAt: v.createdAt }),
-    });
-  }
-  const loaded = await Promise.all(work.map((w) => loadDemoPhotos(w.plan)));
-  // Only apply when real photos actually loaded; otherwise try again next time.
-  if (loaded.some((l) => l.images.some((i) => i.isPlaceholder))) return 0;
-  await db.transaction("rw", [db.vehicles, db.vehicleImages, db.imageBlobs, db.meta], async () => {
-    for (const [i, w] of work.entries()) {
-      await db.vehicleImages.bulkDelete(w.oldImages.map((x) => x.id));
-      await db.imageBlobs.bulkDelete(w.oldImages.flatMap((x) => [x.storageKey, x.thumbKey]));
-      await db.vehicleImages.bulkAdd(loaded[i].images);
-      await db.imageBlobs.bulkPut(loaded[i].blobs);
-      await db.vehicles.update(w.vehicleId, { coverImageId: loaded[i].images[0]?.id ?? null, color: w.color });
-    }
-    await db.meta.put({ key: "demoPhotos", value: DEMO_PHOTOS_VERSION });
-  });
-  return work.length;
 }

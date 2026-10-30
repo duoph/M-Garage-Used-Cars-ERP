@@ -114,11 +114,11 @@ export function Topbar() {
           <DropdownMenuContent className="w-64">
             <DropdownMenuLabel className="font-normal">
               <div className="text-sm font-medium text-foreground">{user.name}</div>
-              <div className="text-xs">{ROLE_LABELS[user.role]} · {user.email}</div>
+              <div className="text-xs">{ROLE_LABELS[user.role]}{user.email && ` · ${user.email}`}</div>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuLabel className="flex items-center gap-1.5">
-              <UserRoundCog className="size-3.5" /> Demo: switch persona
+              <UserRoundCog className="size-3.5" /> Switch account
             </DropdownMenuLabel>
             {personas.map((p) => (
               <DropdownMenuItem

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { DealerDatabase } from "@/lib/db/database";
-import { buildDemoData, DEMO_USER_IDS, EXTRA_DEMO_VEHICLES, seedDatabase } from "@/lib/db/seed";
+import { buildDemoData, DEMO_USER_IDS, EXTRA_DEMO_VEHICLES, seedDatabase } from "./fixtures/demo-seed";
 import { createDealerService } from "@/lib/services/dealer-service";
 import { BusinessError, type DealerCommands } from "@/lib/repositories/contracts";
 import { indexDataset, periodSummary, vehicleView, type Dataset } from "@/lib/calculations/selectors";
@@ -32,7 +32,7 @@ async function snapshot(): Promise<Dataset> {
 
 beforeEach(async () => {
   db = new DealerDatabase(`test-${Math.random()}`);
-  await seedDatabase(db, { withImages: false });
+  await seedDatabase(db);
   svc = createDealerService(() => db);
   admin = (await db.users.get(DEMO_USER_IDS.admin))!;
   sales = (await db.users.get(DEMO_USER_IDS.sales))!;
@@ -41,7 +41,7 @@ beforeEach(async () => {
 
 describe("seed data", () => {
   it("is internally consistent", async () => {
-    const data = buildDemoData({ withImages: false });
+    const data = buildDemoData();
     expect(data.vehicles.length).toBeGreaterThanOrEqual(20);
     const statuses = new Set(data.vehicles.map((v) => v.status));
     expect(statuses).toEqual(new Set(["available", "reserved", "sold"]));
@@ -56,7 +56,7 @@ describe("seed data", () => {
   });
 
   it("includes the generated extra cars with unique registration and chassis numbers", () => {
-    const data = buildDemoData({ withImages: false });
+    const data = buildDemoData();
     expect(data.vehicles).toHaveLength(22 + EXTRA_DEMO_VEHICLES);
     expect(new Set(data.vehicles.map((v) => v.registrationNumber.replace(/\s/g, ""))).size).toBe(data.vehicles.length);
     expect(new Set(data.vehicles.map((v) => v.chassisNumber)).size).toBe(data.vehicles.length);

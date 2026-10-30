@@ -58,7 +58,7 @@ export function StaffPage() {
       <div className="mb-4 flex gap-2.5 rounded-lg border border-[#d1e0ff] bg-[#eff4ff] p-3 text-[13px] text-[#1d3a8a]">
         <Info className="mt-0.5 size-4 shrink-0" />
         <p>
-          <strong className="font-semibold">Demo access.</strong> Accounts here act as sign-in personas only — there are no passwords in this demo. When the backend is
+          <strong className="font-semibold">No passwords yet.</strong> Accounts here act as sign-in profiles only. When the backend is
           connected, invitations, passwords and sessions will be handled securely on the server.
         </p>
       </div>

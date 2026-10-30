@@ -14,7 +14,6 @@ import { Button } from "@/components/ui/button";
 import { Sheet, SheetBody, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { VehicleImage } from "@/components/shared/vehicle-image";
 import { EmptyState } from "@/components/shared/empty-state";
-import { PhotoCredit } from "@/components/shared/photo-credit";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { PhotoDropZone, processFiles } from "./drop-zone";
 import { SortablePhotoGrid, moveItem } from "./sortable-photo-grid";
@@ -69,7 +68,6 @@ export function VehiclePhotoGallery({ vehicle, images, title }: { vehicle: Vehic
         )}
       </div>
 
-      {current?.attribution && <PhotoCredit attribution={current.attribution} className="-mt-1.5" />}
 
       {(images.length > 1 || canManage) && (
         <div className="flex items-center gap-2">
@@ -173,7 +171,6 @@ function Lightbox({
               </>
             )}
           </div>
-          {images[index]?.attribution && <PhotoCredit attribution={images[index].attribution} dark className="px-4 pt-3 text-center" />}
           <ul className="flex justify-center gap-2 overflow-x-auto px-4 py-4">
             {images.map((img, i) => (
               <li key={img.id}>

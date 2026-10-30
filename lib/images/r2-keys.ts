@@ -2,7 +2,7 @@ import { ACCEPTED_IMAGE_TYPES } from "@/lib/images/process";
 
 /**
  * Stored image keys that start with `r2:` live in Cloudflare R2; anything else is an IndexedDB blob
- * (demo photos and photos added before R2 was switched on). Shared by the browser and the API routes.
+ * (photos added before R2 was switched on, and the showroom logo). Shared by the browser and the API routes.
  */
 export const R2_KEY_PREFIX = "r2:";
 

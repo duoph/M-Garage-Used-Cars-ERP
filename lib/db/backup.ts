@@ -4,7 +4,7 @@ import { newId } from "@/lib/utils/ids";
 import type { User } from "@/types";
 
 /**
- * Local backup / restore for the browser demo. Images travel as data URLs inside the JSON file.
+ * Local backup / restore for browser-stored data. Images travel as data URLs inside the JSON file.
  * Production backups must be handled server-side (database snapshots + object storage versioning).
  */
 
@@ -145,7 +145,7 @@ export async function clearBusinessData(db: DealerDatabase, actor: User) {
       if (logo) await db.imageBlobs.put(logo);
       await db.activity.add({
         id: newId(), actorId: actor.id, entityType: "settings", entityId: "business", action: "data.reset",
-        timestamp: new Date().toISOString(), description: "Cleared all demo business data", href: null, metadata: {},
+        timestamp: new Date().toISOString(), description: "Cleared all business data", href: null, metadata: {},
       });
     },
   );

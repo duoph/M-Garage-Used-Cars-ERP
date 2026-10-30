@@ -18,14 +18,15 @@ the items below are done. Nothing here is solved by the current build.
 - Exports must be generated server-side from role-filtered queries.
 
 ## 3. Cloud database
-- Move `lib/db` (IndexedDB/Dexie) to Cloudflare D1 or PostgreSQL with proper schema, foreign keys,
+- Move `lib/db` (IndexedDB/Dexie) to Supabase Postgres (clients in `lib/supabase`) with proper schema, foreign keys,
   unique constraints (normalised registration number, chassis number), and migrations.
 - Keep integer paise columns; keep business-date vs timestamp distinction.
 - Implement `DealerCommands` (`lib/repositories/contracts.ts`) as server handlers reusing
   `lib/validation` and `lib/calculations`.
 
 ## 4. Object storage
-- Move photos from IndexedDB Blobs to Cloudflare R2 via signed upload URLs; implement `ImageStorage`.
+- New vehicle photos upload to Cloudflare R2 via signed URLs (`app/api/uploads`). Still to do: auth on
+  those routes, and moving the showroom logo and older IndexedDB photos.
 - Server-side validation of type/size, image re-encoding, and quota tracking against the 5 GB
   allowance (`BusinessSettings.storageQuotaGb`). Private bucket with signed read URLs or a CDN policy.
 
@@ -50,9 +51,8 @@ the items below are done. Nothing here is solved by the current build.
 - Data protection review (customer phone numbers and addresses are personal data under India's
   DPDP Act): consent, retention and access controls.
 
-## 9. Demo content
-- Remove the bundled Wikimedia demo photos (`public/demo-cars`, `lib/images/demo-photos.ts`) and the demo
-  seed before go-live; real listings must use the showroom's own photos.
+## 9. Demo content — done
+- The demo showroom and bundled photos were removed; the app starts blank with one Owner account.
 
 ## 10. Not in Phase 1 (by design)
 GST tax invoices, RTO/insurance integrations, CRM, WhatsApp automation, multi-branch, public listings.

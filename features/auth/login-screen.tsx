@@ -51,12 +51,12 @@ export function LoginScreen() {
         <div className="w-full max-w-md">
           <Logo tagline className="mb-8 lg:hidden" />
           <h2 className="text-xl font-semibold tracking-tight">Sign in to {ds.settings.showroomName}</h2>
-          <p className="mt-1 text-sm text-muted-foreground">Choose a demo employee to explore DealerOS with that role&apos;s permissions.</p>
+          <p className="mt-1 text-sm text-muted-foreground">Choose your account to continue.</p>
           <div className="mt-4 flex gap-2.5 rounded-lg border border-[#fde7b0] bg-warning-soft p-3 text-[13px] text-[#7a3e06]">
             <Info className="mt-0.5 size-4 shrink-0" />
             <p>
-              <strong className="font-semibold">Demo access, not real authentication.</strong> There are no passwords and all data stays in
-              this browser. Production will use secure, server-enforced sign-in.
+              <strong className="font-semibold">Not real authentication yet.</strong> There are no passwords and all data stays in
+              this browser until the cloud database and secure sign-in are connected.
             </p>
           </div>
           <ul className="mt-4 grid gap-2">

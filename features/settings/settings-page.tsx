@@ -3,11 +3,10 @@ import * as React from "react";
 import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useLiveQuery } from "dexie-react-hooks";
-import { Check, Cloud, Database, Download, HardDrive, ImagePlus, RefreshCw, RotateCcw, Trash2, Upload } from "lucide-react";
+import { Check, Cloud, Database, Download, HardDrive, ImagePlus, RefreshCw, Trash2, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { useData } from "@/components/providers/data-provider";
 import { useCurrentUser } from "@/hooks/use-auth";
-import { useSessionStore } from "@/lib/store/session";
 import { useUiStore } from "@/lib/store/ui";
 import { THEMES } from "@/lib/themes";
 import { cn } from "@/lib/utils/cn";
@@ -15,7 +14,6 @@ import { dealerService } from "@/lib/services/dealer-service";
 import { reportError } from "@/hooks/use-commands";
 import { settingsSchema, type SettingsInput } from "@/lib/validation/schemas";
 import { getDb } from "@/lib/db/database";
-import { DEMO_USER_IDS, seedDatabase } from "@/lib/db/seed";
 import { clearBusinessData, exportBackup, importBackup } from "@/lib/db/backup";
 import { formatBytes, prepareLogo } from "@/lib/images/process";
 import { r2Enabled } from "@/lib/images/r2-storage";
@@ -91,7 +89,7 @@ export function SettingsPage() {
 
   return (
     <>
-      <PageHeader title="Settings" description="Showroom profile, preferences and demo data." />
+      <PageHeader title="Settings" description="Showroom profile, preferences, storage and backups." />
       <div className="mb-4">
         <AppearanceSection />
       </div>
@@ -170,7 +168,7 @@ export function SettingsPage() {
 
       <div className="mt-4 grid gap-4">
         <StorageSection />
-        <DemoDataSection />
+        <DataSection />
       </div>
     </>
   );
@@ -381,7 +379,7 @@ function StorageSection() {
           <div className="flex items-start gap-3">
             <HardDrive className="mt-0.5 size-5 text-muted-foreground" />
             <UsageMeter
-              label={r2Enabled ? "This browser (older and demo photos)" : "This browser"}
+              label={r2Enabled ? "This browser (photos added before R2)" : "This browser"}
               used={local?.bytes ?? null}
               quota={ds.settings.storageQuotaGb * 1024 ** 3}
               detail={`${localPhotos} vehicle photos (${local?.count ?? 0} stored files incl. thumbnails) · avg ${localPhotos ? formatBytes(Math.round((local?.bytes ?? 0) / Math.max(1, localPhotos))) : "—"} per photo`}
@@ -394,12 +392,11 @@ function StorageSection() {
   );
 }
 
-function DemoDataSection() {
+function DataSection() {
   const user = useCurrentUser();
-  const signIn = useSessionStore((s) => s.signIn);
   const fileRef = React.useRef<HTMLInputElement>(null);
   const [busy, setBusy] = React.useState<string | null>(null);
-  const [confirm, setConfirm] = React.useState<"restore" | "clear" | { importJson: string; name: string } | null>(null);
+  const [confirm, setConfirm] = React.useState<"clear" | { importJson: string; name: string } | null>(null);
 
   async function doExport() {
     setBusy("export");
@@ -415,13 +412,12 @@ function DemoDataSection() {
   }
 
   return (
-    <SettingsSection title="Demo data" description="Data lives only in this browser's IndexedDB. Back it up before clearing browser data.">
+    <SettingsSection title="Data & backups" description="Records live in this browser's IndexedDB until the cloud database is connected. Back up before clearing browser data.">
       <div className="grid gap-3">
         {[
           { icon: Download, title: "Export local backup", desc: "Download all records and photos as a JSON file.", action: <Button variant="outline" size="sm" onClick={doExport} loading={busy === "export"}>Export</Button> },
           { icon: Upload, title: "Import local backup", desc: "Replace all data with a validated DealerOS backup file.", action: <Button variant="outline" size="sm" onClick={() => fileRef.current?.click()}>Import</Button> },
-          { icon: RotateCcw, title: "Restore sample data", desc: "Replace everything with the original demo showroom.", action: <Button variant="outline" size="sm" onClick={() => setConfirm("restore")}>Restore</Button> },
-          { icon: Trash2, title: "Clear demo data", desc: "Delete all vehicles, sales, expenses and history. Staff and settings are kept.", action: <Button variant="destructive" size="sm" onClick={() => setConfirm("clear")}>Clear data</Button> },
+          { icon: Trash2, title: "Clear all business data", desc: "Delete all vehicles, sales, expenses and history. Staff and settings are kept.", action: <Button variant="destructive" size="sm" onClick={() => setConfirm("clear")}>Clear data</Button> },
         ].map((r) => (
           <div key={r.title} className="flex items-center gap-3 rounded-lg border p-3">
             <r.icon className="size-4 shrink-0 text-muted-foreground" />
@@ -451,27 +447,21 @@ function DemoDataSection() {
       <ConfirmDialog
         open={confirm !== null}
         onOpenChange={(o) => !o && setConfirm(null)}
-        title={confirm === "restore" ? "Restore sample data?" : confirm === "clear" ? "Clear all demo data?" : "Import backup?"}
+        title={confirm === "clear" ? "Clear all business data?" : "Import backup?"}
         description={
-          confirm === "restore"
-            ? "All current records and photos will be replaced with the original demo showroom. You'll be signed in as the demo Admin."
-            : confirm === "clear"
-              ? "Every vehicle, purchase, sale, payment, expense, photo and activity entry will be permanently deleted from this browser."
-              : confirm && typeof confirm === "object"
-                ? `All current data will be replaced with the contents of ${confirm.name}. The file is validated first; if it's invalid, nothing changes.`
-                : undefined
+          confirm === "clear"
+            ? "Every vehicle, purchase, sale, payment, expense, photo and activity entry will be permanently deleted from this browser."
+            : confirm && typeof confirm === "object"
+              ? `All current data will be replaced with the contents of ${confirm.name}. The file is validated first; if it's invalid, nothing changes.`
+              : undefined
         }
-        confirmLabel={confirm === "restore" ? "Restore sample data" : confirm === "clear" ? "Clear everything" : "Import and replace"}
+        confirmLabel={confirm === "clear" ? "Clear everything" : "Import and replace"}
         tone="destructive"
         onConfirm={async () => {
           try {
-            if (confirm === "restore") {
-              await seedDatabase(getDb());
-              signIn(DEMO_USER_IDS.admin);
-              toast.success("Sample data restored");
-            } else if (confirm === "clear") {
+            if (confirm === "clear") {
               await clearBusinessData(getDb(), user);
-              toast.success("Demo data cleared");
+              toast.success("Business data cleared");
             } else if (confirm && typeof confirm === "object") {
               const result = await importBackup(getDb(), confirm.importJson, user);
               if (!result.ok) {

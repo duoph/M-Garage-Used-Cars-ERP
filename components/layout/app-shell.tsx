@@ -52,7 +52,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
         </main>
         <footer className="no-print px-4 py-3 text-center text-[11px] text-muted-foreground/70 sm:px-6">
-          Demo mode · data stays in this browser
+          Local mode · data stays in this browser
         </footer>
       </div>
       <GlobalSearch />
