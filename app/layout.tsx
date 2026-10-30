@@ -8,8 +8,8 @@ const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: { default: "DealerOS", template: "%s · DealerOS" },
-  description: "Used-car showroom management by Duoph Technologies.",
+  title: { default: "M Garage", template: "%s · M Garage" },
+  description: "Showroom management for M Garage Used Car Dealer.",
 };
 
 // Applies the saved colour theme before first paint so the page never flashes the default.

@@ -491,7 +491,7 @@ function DataSection() {
     setBusy("export");
     try {
       const json = await exportBackup(getDb());
-      downloadFile(`dealeros-backup-${todayISO()}.json`, json, "application/json");
+      downloadFile(`m-garage-backup-${todayISO()}.json`, json, "application/json");
       toast.success("Backup downloaded");
     } catch (e) {
       reportError(e);
@@ -505,7 +505,7 @@ function DataSection() {
       <div className="grid gap-3">
         {[
           { icon: Download, title: "Export local backup", desc: "Download all records and photos as a JSON file.", action: <Button variant="outline" size="sm" onClick={doExport} loading={busy === "export"}>Export</Button> },
-          { icon: Upload, title: "Import local backup", desc: "Replace all data with a validated DealerOS backup file.", action: <Button variant="outline" size="sm" onClick={() => fileRef.current?.click()}>Import</Button> },
+          { icon: Upload, title: "Import local backup", desc: "Replace all data with a validated M Garage backup file.", action: <Button variant="outline" size="sm" onClick={() => fileRef.current?.click()}>Import</Button> },
           { icon: Trash2, title: "Clear all business data", desc: "Delete all vehicles, sales, expenses and history. Staff and settings are kept.", action: <Button variant="destructive" size="sm" onClick={() => setConfirm("clear")}>Clear data</Button> },
         ].map((r) => (
           <div key={r.title} className="flex items-center gap-3 rounded-lg border p-3">

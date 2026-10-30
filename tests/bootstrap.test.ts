@@ -12,7 +12,7 @@ describe("fresh start", () => {
     await ensureInitialized(db);
     expect(await db.users.toArray()).toMatchObject([{ id: OWNER_USER_ID, role: "admin", status: "active" }]);
     expect(await db.vehicles.count()).toBe(0);
-    expect((await db.settings.get("business"))?.showroomName).toBe("My Showroom");
+    expect((await db.settings.get("business"))?.showroomName).toBe("M Garage");
   });
 
   it("wipes an old demo showroom once, keeping the logo", async () => {
@@ -26,7 +26,7 @@ describe("fresh start", () => {
     for (const t of [db.vehicles, db.purchases, db.sales, db.expenses, db.customers, db.activity]) expect(await t.count()).toBe(0);
     expect((await db.users.toArray()).map((u) => u.id)).toEqual([OWNER_USER_ID]);
     const settings = await db.settings.get("business");
-    expect(settings).toMatchObject({ showroomName: "My Showroom", logoKey: "logo" });
+    expect(settings).toMatchObject({ showroomName: "M Garage", legalName: "M Garage Used Car Dealer", logoKey: "logo" });
     expect(await db.imageBlobs.get("logo")).toBeDefined();
 
     // Records added afterwards survive later loads.

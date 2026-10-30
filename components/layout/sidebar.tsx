@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { ChevronsLeft, LogOut, Receipt, ShoppingCart, Wallet, X } from "lucide-react";
+import { ChevronsLeft, LogOut, Plus, X } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
 import { NAV_ITEMS, NAV_SECTIONS, isActivePath } from "@/lib/navigation";
 import { activeVehicles, outstandingBalances, vehicleView } from "@/lib/calculations/selectors";
@@ -60,7 +60,7 @@ export function SidebarNav({ collapsed = false, mobile = false, onNavigate }: { 
             <div className={cn("truncate font-semibold text-white", mobile ? "text-[15px]" : "text-sm")} title={ds.settings.showroomName}>
               {ds.settings.showroomName}
             </div>
-            <div className="text-[11px] text-sidebar-muted">DealerOS</div>
+            <div className="text-[10px] font-medium tracking-[0.14em] text-sidebar-muted uppercase">Used Car Dealer</div>
           </div>
         )}
         {mobile && (
@@ -158,13 +158,13 @@ function QuickActions({ onNavigate }: { onNavigate?: () => void }) {
   const router = useRouter();
   const openExpense = useDialogStore((s) => s.openExpense);
   const actions = [
-    can("purchases.manage") && { label: "Purchase", icon: ShoppingCart, run: () => router.push("/purchases/new") },
-    can("sales.create") && { label: "Sale", icon: Receipt, run: () => router.push("/sales/new") },
-    can("expenses.manage") && { label: "Expense", icon: Wallet, run: () => openExpense() },
+    can("purchases.manage") && { label: "Purchase", run: () => router.push("/purchases/new") },
+    can("sales.create") && { label: "Sale", run: () => router.push("/sales/new") },
+    can("expenses.manage") && { label: "Expense", run: () => openExpense() },
   ].filter((a) => a !== false);
   if (actions.length === 0) return null;
   return (
-    <div className="grid shrink-0 gap-1.5 border-b border-sidebar-border p-3" style={{ gridTemplateColumns: `repeat(${actions.length}, minmax(0, 1fr))` }}>
+    <div className="flex shrink-0 items-center border-b border-sidebar-border px-2 py-1.5">
       {actions.map((a) => (
         <button
           key={a.label}
@@ -173,10 +173,10 @@ function QuickActions({ onNavigate }: { onNavigate?: () => void }) {
             onNavigate?.();
             a.run();
           }}
-          className="flex flex-col items-center gap-1 rounded-lg bg-sidebar-accent/70 py-2 text-xs font-medium text-white hover:bg-sidebar-accent focus-visible:ring-2 focus-visible:ring-sidebar-highlight/60 outline-none"
+          className="flex flex-1 items-center justify-center gap-1 rounded-md px-1 py-1 text-[13px] text-sidebar-foreground outline-none hover:bg-sidebar-accent hover:text-white focus-visible:ring-2 focus-visible:ring-sidebar-highlight/60"
         >
-          <a.icon className="size-[18px] text-sidebar-highlight" aria-hidden />
-          <span>+ {a.label}</span>
+          <Plus className="size-3 shrink-0 opacity-70" aria-hidden />
+          {a.label}
         </button>
       ))}
     </div>

@@ -78,7 +78,7 @@ export async function importBackup(db: DealerDatabase, json: string, actor: User
   const result = backupSchema.safeParse(parsed);
   if (!result.success) {
     const issue = result.error.issues[0];
-    return { ok: false, message: `This is not a valid DealerOS backup (${issue.path.join(".") || "root"}: ${issue.message}).` };
+    return { ok: false, message: `This is not a valid M Garage backup (${issue.path.join(".") || "root"}: ${issue.message}).` };
   }
   const { tables, blobs } = result.data;
 

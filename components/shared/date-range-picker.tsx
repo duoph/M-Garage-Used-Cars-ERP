@@ -1,6 +1,6 @@
 "use client";
 import * as React from "react";
-import { CalendarDays, ChevronDown } from "lucide-react";
+import { Calendar, CalendarDays, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Label } from "@/components/ui/label";
@@ -38,7 +38,7 @@ export function DateRangePicker({ value, onChange, className, size = "default" }
           <ChevronDown className="opacity-60" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="end" className="w-[300px] p-0">
+      <PopoverContent align="end" className="w-[320px] p-0">
         <div className="grid gap-0.5 p-1.5">
           {DATE_RANGE_PRESETS.filter((p) => p !== "custom").map((p) => (
             <button
@@ -57,21 +57,24 @@ export function DateRangePicker({ value, onChange, className, size = "default" }
             </button>
           ))}
         </div>
-        <div className="grid gap-3 border-t p-3">
-          <p className="text-xs font-medium text-muted-foreground">Custom range</p>
-          <div className="grid grid-cols-2 gap-2">
-            <div className="grid gap-1">
-              <Label htmlFor="range-from" className="text-xs">From</Label>
-              <DateField id="range-from" value={from} onChange={(e) => setFrom(e.target.value)} />
-            </div>
-            <div className="grid gap-1">
-              <Label htmlFor="range-to" className="text-xs">To</Label>
-              <DateField id="range-to" value={to} onChange={(e) => setTo(e.target.value)} />
+        <div className="border-t bg-muted/40 p-3">
+          <div className="mb-2.5 flex items-center gap-2">
+            <span className="flex size-7 items-center justify-center rounded-md bg-card text-foreground shadow-xs ring-1 ring-border">
+              <CalendarDays className="size-3.5" />
+            </span>
+            <div className="min-w-0 leading-tight">
+              <p className="text-[13px] font-medium">Custom range</p>
+              <p className="text-[11px] text-muted-foreground">Choose a start and an end date</p>
             </div>
           </div>
-          {invalid && <p className="text-xs text-destructive">Start date must be before end date.</p>}
+          <div className="grid gap-2">
+            <RangeDate id="range-from" label="From" value={from} onChange={setFrom} invalid={!!invalid} />
+            <RangeDate id="range-to" label="To" value={to} onChange={setTo} invalid={!!invalid} />
+          </div>
+          {invalid && <p className="mt-2 text-xs text-destructive">Start date must be before the end date.</p>}
           <Button
             size="sm"
+            className="mt-3 w-full"
             disabled={!!invalid || (!from && !to)}
             onClick={() => {
               onChange({ preset: "custom", from: from || null, to: to || null });
@@ -83,5 +86,55 @@ export function DateRangePicker({ value, onChange, className, size = "default" }
         </div>
       </PopoverContent>
     </Popover>
+  );
+}
+
+function RangeDate({
+  id,
+  label,
+  value,
+  onChange,
+  invalid,
+}: {
+  id: string;
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  invalid: boolean;
+}) {
+  const ref = React.useRef<HTMLInputElement>(null);
+
+  return (
+    <div className="grid gap-1">
+      <Label htmlFor={id} className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
+        {label}
+      </Label>
+      <div className="relative">
+        <DateField
+          ref={ref}
+          id={id}
+          value={value}
+          invalid={invalid}
+          onChange={(e) => onChange(e.target.value)}
+          className="h-9 bg-card pr-10 scheme-light [&::-webkit-calendar-picker-indicator]:pointer-events-none [&::-webkit-calendar-picker-indicator]:hidden"
+        />
+        <button
+          type="button"
+          className="absolute top-1/2 right-1 flex size-7 -translate-y-1/2 items-center justify-center rounded-md text-foreground hover:bg-muted"
+          aria-label={`Choose ${label.toLowerCase()} date`}
+          onClick={() => {
+            const field = ref.current;
+            if (!field) return;
+            try {
+              field.showPicker();
+            } catch {
+              field.focus();
+            }
+          }}
+        >
+          <Calendar className="size-4" />
+        </button>
+      </div>
+    </div>
   );
 }

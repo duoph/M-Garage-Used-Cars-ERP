@@ -10,12 +10,14 @@ export const OWNER_USER_ID = "u-owner";
  */
 const FRESH_START_VERSION = "1";
 const DEMO_SHOWROOM_NAME = "Prestige Auto Hub";
+const PLACEHOLDER_SHOWROOM_NAME = "My Showroom";
+const PLACEHOLDER_RECEIPT_FOOTER = "Thank you for your business.";
 
 export function defaultSettings(): BusinessSettings {
   return {
     id: "business",
-    showroomName: "My Showroom",
-    legalName: "",
+    showroomName: "M Garage",
+    legalName: "M Garage Used Car Dealer",
     address: "",
     city: "",
     phone: "",
@@ -25,7 +27,7 @@ export function defaultSettings(): BusinessSettings {
     currency: "INR",
     dateFormat: "dd MMM yyyy",
     defaultInventoryView: "grid",
-    receiptFooter: "Thank you for your business.",
+    receiptFooter: "Thank you for choosing M Garage.",
     receiptTerms:
       "Vehicle sold on an as-is-where-is basis after inspection by the buyer. RC transfer will be completed after receipt of full payment. This is a payment acknowledgement, not a tax invoice.",
     maxUploadMb: 10,
@@ -45,13 +47,30 @@ export async function markInitialized(db: DealerDatabase): Promise<void> {
   await db.meta.put({ key: "freshStart", value: FRESH_START_VERSION });
 }
 
+/** Renames the untouched starter profile. A name someone already chose is left alone. */
+async function applyShowroomBrand(db: DealerDatabase): Promise<void> {
+  const settings = await db.settings.get("business");
+  if (!settings || settings.showroomName !== PLACEHOLDER_SHOWROOM_NAME) return;
+  await db.settings.update("business", {
+    showroomName: "M Garage",
+    legalName: settings.legalName.trim() ? settings.legalName : "M Garage Used Car Dealer",
+    receiptFooter:
+      !settings.receiptFooter.trim() || settings.receiptFooter === PLACEHOLDER_RECEIPT_FOOTER
+        ? "Thank you for choosing M Garage."
+        : settings.receiptFooter,
+  });
+}
+
 /**
  * Prepares the local database on first load: a blank showroom with one Owner admin. Browsers that still
  * hold the old demo showroom are wiped once; showroom settings and the uploaded logo are kept.
  */
 export async function ensureInitialized(db: DealerDatabase): Promise<void> {
   const marker = await db.meta.get("freshStart");
-  if (marker?.value === FRESH_START_VERSION) return;
+  if (marker?.value === FRESH_START_VERSION) {
+    await applyShowroomBrand(db);
+    return;
+  }
   await db.transaction("rw", db.tables, async () => {
     const settings = await db.settings.get("business");
     const logo = settings?.logoKey ? await db.imageBlobs.get(settings.logoKey) : undefined;
@@ -61,6 +80,7 @@ export async function ensureInitialized(db: DealerDatabase): Promise<void> {
       await db.settings.put({ ...defaultSettings(), logoKey: settings?.logoKey ?? null });
     if (logo) await db.imageBlobs.put(logo);
     await db.users.add(ownerUser());
+    await applyShowroomBrand(db);
     await markInitialized(db);
   });
 }

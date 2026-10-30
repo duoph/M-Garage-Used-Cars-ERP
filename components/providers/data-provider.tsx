@@ -57,7 +57,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       .catch((e: unknown) => {
         console.error(e);
         setError(
-          "DealerOS could not open its local database. Private browsing modes or blocked site storage can prevent IndexedDB from working.",
+          "M Garage could not open its local database. Private browsing modes or blocked site storage can prevent IndexedDB from working.",
         );
       });
   }, []);

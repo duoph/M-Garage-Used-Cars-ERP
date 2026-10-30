@@ -72,7 +72,7 @@ function ExportCard() {
           variant="outline"
           size="sm"
           onClick={() => {
-            download(datasets.map((d) => d.build(ctx)), "dealeros-all-data", "xlsx");
+            download(datasets.map((d) => d.build(ctx)), "m-garage-all-data", "xlsx");
             toast.success(`Downloaded ${datasets.length} sheets in one workbook`);
           }}
         >

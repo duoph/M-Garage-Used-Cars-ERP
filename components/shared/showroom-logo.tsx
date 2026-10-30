@@ -11,7 +11,7 @@ export function showroomInitials(name: string): string {
 
 /**
  * The showroom's own logo (uploaded in Settings → Showroom profile). Until one is uploaded, shows the
- * showroom's initials so receipts never carry the DealerOS product mark.
+ * showroom's initials so receipts never carry the M Garage product mark.
  */
 export function ShowroomLogo({ className }: { className?: string }) {
   const { ds } = useData();

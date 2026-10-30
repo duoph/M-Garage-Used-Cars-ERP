@@ -31,7 +31,7 @@ export function LoginScreen() {
       <aside className="relative hidden flex-col justify-between overflow-hidden bg-sidebar p-10 text-white lg:flex">
         <Logo dark tagline />
         <div className="relative z-10 max-w-md">
-          <h1 className="text-3xl font-semibold tracking-tight">Run your showroom from one place.</h1>
+          <h1 className="text-3xl font-semibold tracking-tight">Run M Garage from one place.</h1>
           <p className="mt-3 text-[15px] leading-relaxed text-sidebar-foreground">
             Purchases, stock, photos, sales, payments and expenses — with profit you can trust, down to the paisa.
           </p>
@@ -43,7 +43,7 @@ export function LoginScreen() {
             ))}
           </ul>
         </div>
-        <p className="relative z-10 text-xs text-sidebar-muted">© {new Date().getFullYear()} Duoph Technologies</p>
+        <p className="relative z-10 text-xs text-sidebar-muted">© {new Date().getFullYear()} M Garage Used Car Dealer</p>
         <div className="pointer-events-none absolute -right-32 -bottom-40 size-[520px] rounded-full border border-white/5" />
         <div className="pointer-events-none absolute -right-16 -bottom-24 size-[360px] rounded-full border border-white/5" />
       </aside>
