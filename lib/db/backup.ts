@@ -25,8 +25,7 @@ const backupSchema = z.object({
     reservations: z.array(row.extend({ vehicleId: z.string(), customerId: z.string() })),
     sales: z.array(row.extend({ vehicleId: z.string(), salePricePaise: z.number().int(), status: z.enum(["completed", "cancelled"]) })),
     salePayments: z.array(row.extend({ saleId: z.string(), amountPaise: z.number().int() })),
-    // Added after the first release; older backups have no quotes.
-    quotes: z.array(row.extend({ vehicleId: z.string(), vehiclePricePaise: z.number().int() })).default([]),
+    // Older backups may still carry a "quotes" table; it is ignored (quotes were removed).
     expenses: z.array(row.extend({ amountPaise: z.number().int(), category: z.string() })),
     activity: z.array(row),
     settings: z.array(row).length(1),
@@ -49,10 +48,10 @@ async function dataUrlToBlob(dataUrl: string): Promise<Blob> {
 }
 
 export async function exportBackup(db: DealerDatabase): Promise<string> {
-  const [users, vehicles, purchases, vehicleImages, customers, reservations, sales, salePayments, quotes, expenses, activity, settings, counters, blobRows] =
+  const [users, vehicles, purchases, vehicleImages, customers, reservations, sales, salePayments, expenses, activity, settings, counters, blobRows] =
     await Promise.all([
       db.users.toArray(), db.vehicles.toArray(), db.purchases.toArray(), db.vehicleImages.toArray(), db.customers.toArray(),
-      db.reservations.toArray(), db.sales.toArray(), db.salePayments.toArray(), db.quotes.toArray(), db.expenses.toArray(), db.activity.toArray(),
+      db.reservations.toArray(), db.sales.toArray(), db.salePayments.toArray(), db.expenses.toArray(), db.activity.toArray(),
       db.settings.toArray(), db.counters.toArray(), db.imageBlobs.toArray(),
     ]);
   const blobs = await Promise.all(
@@ -62,7 +61,7 @@ export async function exportBackup(db: DealerDatabase): Promise<string> {
     app: "dealeros",
     version: BACKUP_VERSION,
     exportedAt: new Date().toISOString(),
-    tables: { users, vehicles, purchases, vehicleImages, customers, reservations, sales, salePayments, quotes, expenses, activity, settings, counters },
+    tables: { users, vehicles, purchases, vehicleImages, customers, reservations, sales, salePayments, expenses, activity, settings, counters },
     blobs,
   });
 }
@@ -111,7 +110,6 @@ export async function importBackup(db: DealerDatabase, json: string, actor: User
     await db.reservations.bulkAdd(tables.reservations as any);
     await db.sales.bulkAdd(tables.sales as any);
     await db.salePayments.bulkAdd(tables.salePayments as any);
-    await db.quotes.bulkAdd(tables.quotes as any);
     await db.expenses.bulkAdd(tables.expenses as any);
     await db.activity.bulkAdd(tables.activity as any);
     await db.settings.bulkAdd(tables.settings as any);
@@ -137,13 +135,13 @@ export async function importBackup(db: DealerDatabase, json: string, actor: User
 export async function clearBusinessData(db: DealerDatabase, actor: User) {
   await db.transaction(
     "rw",
-    [db.vehicles, db.purchases, db.vehicleImages, db.imageBlobs, db.customers, db.reservations, db.sales, db.salePayments, db.quotes, db.expenses, db.activity, db.counters, db.settings],
+    [db.vehicles, db.purchases, db.vehicleImages, db.imageBlobs, db.customers, db.reservations, db.sales, db.salePayments, db.expenses, db.activity, db.counters, db.settings],
     async () => {
       const settings = await db.settings.get("business");
       const logoKey = settings?.logoKey;
       const logo = logoKey ? await db.imageBlobs.get(logoKey) : undefined;
       await Promise.all(
-        [db.vehicles, db.purchases, db.vehicleImages, db.imageBlobs, db.customers, db.reservations, db.sales, db.salePayments, db.quotes, db.expenses, db.activity, db.counters].map((t) => t.clear()),
+        [db.vehicles, db.purchases, db.vehicleImages, db.imageBlobs, db.customers, db.reservations, db.sales, db.salePayments, db.expenses, db.activity, db.counters].map((t) => t.clear()),
       );
       if (logo) await db.imageBlobs.put(logo);
       await db.activity.add({

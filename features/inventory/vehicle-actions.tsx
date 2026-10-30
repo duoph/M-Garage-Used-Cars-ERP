@@ -1,7 +1,7 @@
 "use client";
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { ClipboardList, Eye, FileText, MoreHorizontal, Pencil, Receipt, Undo2, Wallet } from "lucide-react";
+import { ClipboardList, Eye, MoreHorizontal, Pencil, Receipt, Undo2, Wallet } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth, useCurrentUser } from "@/hooks/use-auth";
 import { useDialogStore } from "@/lib/store/dialogs";
@@ -31,7 +31,6 @@ export function useVehicleActions(view: VehicleView) {
     canEdit: can("inventory.edit") && !archived,
     canReserve: can("sales.create") && v.status === "available" && !archived,
     canSell: can("sales.create") && v.status !== "sold" && !archived,
-    canQuote: can("sales.create") && v.status === "available" && !archived,
     canRelease: can("sales.create") && v.status === "reserved" && !!view.reservation,
     canExpense: can("expenses.manage") && !archived,
     canViewSale: can("sales.view") && !!view.sale && (can("sales.viewAll") || view.sale.soldBy === user.id),
@@ -40,7 +39,6 @@ export function useVehicleActions(view: VehicleView) {
     release: () => setDialog("release"),
     sell: () =>
       router.push(`/sales/new?vehicle=${v.id}${view.reservation ? `&reservation=${view.reservation.id}` : ""}`),
-    quote: () => router.push(`/quotes/new?vehicle=${v.id}`),
     expense: () => openExpense({ vehicleId: v.id }),
     viewSale: () => view.sale && router.push(`/sales/${view.sale.id}`),
   };
@@ -102,11 +100,6 @@ export function VehicleActionsMenu({ view, align = "end" }: { view: VehicleView;
             </DropdownMenuItem>
           )}
           {(a.canReserve || a.canSell || a.canRelease || a.canViewSale) && <DropdownMenuSeparator />}
-          {a.canQuote && (
-            <DropdownMenuItem onSelect={a.quote}>
-              <FileText /> Create quote
-            </DropdownMenuItem>
-          )}
           {a.canReserve && (
             <DropdownMenuItem onSelect={a.reserve}>
               <ClipboardList /> Reserve

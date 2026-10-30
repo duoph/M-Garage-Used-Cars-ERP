@@ -15,7 +15,7 @@ import { BootScreen } from "@/components/shared/boot-screen";
 import { ShowroomLogo } from "@/components/shared/showroom-logo";
 
 /**
- * Shared pieces for the printable receipt, invoice and quote: an A4 sheet on a grey page, a toolbar
+ * Shared pieces for the printable receipt and invoice: an A4 sheet on a grey page, a toolbar
  * that is hidden when printing, the showroom letterhead and the signature block.
  */
 

@@ -12,7 +12,7 @@ import { dealerService } from "@/lib/services/dealer-service";
 import { reportError } from "@/hooks/use-commands";
 import { makeSaleSchema, type SaleInput } from "@/lib/validation/schemas";
 import { activeVehicles, vehicleView, type VehicleView } from "@/lib/calculations/selectors";
-import { paymentStatusFor, quoteTotals } from "@/lib/calculations/finance";
+import { paymentStatusFor } from "@/lib/calculations/finance";
 import { matchesSearch } from "@/features/inventory/filters";
 import { PAYMENT_METHODS } from "@/types";
 import { PAYMENT_METHOD_LABELS, formatKm, vehicleTitle } from "@/lib/utils/labels";
@@ -50,14 +50,11 @@ export function NewSalePage() {
   const user = useCurrentUser();
   const [completedSaleId, setCompletedSaleId] = React.useState<string | null>(null);
 
-  // A quote (?quote=) brings its vehicle, buyer and quoted total with it.
-  const fromQuote = ds.quotes.find((q) => q.id === params.get("quote") && q.status !== "accepted");
-  const initialVehicle = fromQuote?.vehicleId ?? params.get("vehicle");
+  const initialVehicle = params.get("vehicle");
   const pre = initialVehicle ? idx.vehicles.get(initialVehicle) : undefined;
   const preReservation = pre ? idx.activeReservationByVehicle.get(pre.id) : undefined;
   const preCustomer = preReservation ? idx.customers.get(preReservation.customerId) : undefined;
   const preSelectable = pre && pre.status !== "sold" && !pre.archivedAt;
-  const quote = preSelectable && !preReservation ? fromQuote : undefined;
 
   const [step, setStep] = React.useState(preSelectable ? 1 : 0);
   const [saving, setSaving] = React.useState(false);
@@ -75,13 +72,12 @@ export function NewSalePage() {
     defaultValues: {
       vehicleId: preSelectable ? pre.id : "",
       reservationId: preSelectable ? (preReservation?.id ?? null) : null,
-      quoteId: quote?.id ?? null,
-      customerName: preCustomer?.name ?? quote?.customerName ?? "",
-      customerPhone: preCustomer?.phone ?? quote?.customerPhone ?? "",
-      customerAddress: preCustomer?.address ?? quote?.customerAddress ?? "",
+      customerName: preCustomer?.name ?? "",
+      customerPhone: preCustomer?.phone ?? "",
+      customerAddress: preCustomer?.address ?? "",
       customerNotes: "",
       saleDate: todayISO(),
-      salePricePaise: quote ? quoteTotals(quote).totalPaise : preSelectable ? pre.askingPricePaise : (undefined as unknown as number),
+      salePricePaise: preSelectable ? pre.askingPricePaise : (undefined as unknown as number),
       amountReceivedPaise: 0,
       paymentMethod: "bank_transfer",
       paymentReference: "",
@@ -100,7 +96,6 @@ export function NewSalePage() {
     setVehicleId(view.vehicle.id);
     form.setValue("vehicleId", view.vehicle.id, { shouldValidate: true });
     form.setValue("reservationId", r?.id ?? null);
-    form.setValue("quoteId", null);
     form.setValue("salePricePaise", view.vehicle.askingPricePaise);
     form.setValue("customerName", c?.name ?? "");
     form.setValue("customerPhone", c?.phone ?? "");
@@ -215,7 +210,7 @@ export function NewSalePage() {
                 htmlFor="ns-price"
                 error={errors.salePricePaise?.message}
                 required
-                hint={selected && (values.quoteId && quote ? `From quote ${quote.reference} · asking ${formatINR(selected.askingPricePaise)}` : `Asking ${formatINR(selected.askingPricePaise)}`)}
+                hint={selected && `Asking ${formatINR(selected.askingPricePaise)}`}
               >
                 <Controller control={form.control} name="salePricePaise" render={({ field }) => (
                   <CurrencyInput id="ns-price" value={field.value} onChange={(v) => field.onChange(v ?? undefined)} onBlur={field.onBlur} invalid={!!errors.salePricePaise} />

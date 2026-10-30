@@ -3,7 +3,6 @@ import type {
   FuelType,
   PaymentMethod,
   PaymentStatus,
-  QuoteStatus,
   ReservationStatus,
   Role,
   SaleStatus,
@@ -59,12 +58,6 @@ export const PAYMENT_STATUS_LABELS: Record<PaymentStatus, string> = {
 export const SALE_STATUS_LABELS: Record<SaleStatus, string> = {
   completed: "Completed",
   cancelled: "Cancelled",
-};
-
-export const QUOTE_STATUS_LABELS: Record<QuoteStatus, string> = {
-  open: "Open",
-  accepted: "Sold",
-  declined: "Declined",
 };
 
 export const RESERVATION_STATUS_LABELS: Record<ReservationStatus, string> = {

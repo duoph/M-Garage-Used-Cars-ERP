@@ -1,6 +1,6 @@
 import type { Dataset, DatasetIndex } from "@/lib/calculations/selectors";
 import { saleView, vehicleView } from "@/lib/calculations/selectors";
-import { purchaseBalance, quoteTotals } from "@/lib/calculations/finance";
+import { purchaseBalance } from "@/lib/calculations/finance";
 import type { Permission } from "@/lib/permissions";
 import { formatDateTime } from "@/lib/utils/dates";
 import {
@@ -8,7 +8,6 @@ import {
   FUEL_LABELS,
   PAYMENT_METHOD_LABELS,
   PAYMENT_STATUS_LABELS,
-  QUOTE_STATUS_LABELS,
   SALE_STATUS_LABELS,
   TRANSMISSION_LABELS,
   VEHICLE_STATUS_LABELS,
@@ -168,32 +167,6 @@ export const EXPORT_DATASETS: ExportDataset[] = [
         { header: "Type", value: (p) => (p.kind === "booking" ? "Booking" : "Payment") },
         { header: "Recorded By", value: (p) => idx.users.get(p.recordedBy)?.name },
       ]),
-  },
-  {
-    id: "quotes",
-    label: "Quotes",
-    description: "Price quotes given to buyers",
-    available: ({ can }) => can("sales.view"),
-    build: ({ ds, idx, can, user }) =>
-      sheet(
-        "Quotes",
-        ds.quotes.filter((q) => can("sales.viewAll") || q.createdBy === user.id).sort((a, b) => b.quoteDate.localeCompare(a.quoteDate)),
-        [
-          { header: "Reference", value: (q) => q.reference, width: 15 },
-          { header: "Date", value: (q) => q.quoteDate, width: 12 },
-          { header: "Valid Until", value: (q) => q.validUntil, width: 12 },
-          { header: "Status", value: (q) => QUOTE_STATUS_LABELS[q.status] },
-          { header: "Buyer", value: (q) => q.customerName, width: 20 },
-          { header: "Buyer Phone", value: (q) => q.customerPhone, width: 14 },
-          { header: "Vehicle", value: (q) => vehicleName(idx.vehicles.get(q.vehicleId)), width: 30 },
-          { header: "Registration", value: (q) => idx.vehicles.get(q.vehicleId)?.registrationNumber, width: 15 },
-          { header: "Vehicle Price", value: (q) => rupees(q.vehiclePricePaise), format: "money" },
-          { header: "Extras", value: (q) => rupees(quoteTotals(q).extrasPaise), format: "money" },
-          { header: "Discount", value: (q) => rupees(q.discountPaise), format: "money" },
-          { header: "Total", value: (q) => rupees(quoteTotals(q).totalPaise), format: "money" },
-          { header: "Created By", value: (q) => idx.users.get(q.createdBy)?.name },
-        ],
-      ),
   },
   {
     id: "expenses",

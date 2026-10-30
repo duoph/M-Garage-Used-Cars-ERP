@@ -76,10 +76,3 @@ export function validatePayment(amountPaise: Paise, balancePaise: Paise, saleSta
     };
   return { ok: true };
 }
-
-/** Car price plus extra charges, less the discount. */
-export function quoteTotals(q: { vehiclePricePaise: number; extras: readonly { amountPaise: number }[]; discountPaise: number }) {
-  const extrasPaise = q.extras.reduce((a, e) => a + (e.amountPaise || 0), 0);
-  const grossPaise = (q.vehiclePricePaise || 0) + extrasPaise;
-  return { extrasPaise, grossPaise, totalPaise: Math.max(0, grossPaise - (q.discountPaise || 0)) };
-}

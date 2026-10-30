@@ -12,7 +12,6 @@ import type {
   FuelType,
   PaymentMethod,
   Purchase,
-  Quote,
   Reservation,
   Sale,
   SalePayment,
@@ -294,7 +293,7 @@ export function buildDemoData({ now = new Date() }: SeedOptions = {}) {
   const payments: SalePayment[] = [];
   const expenses: Expense[] = [];
   const activity: ActivityLog[] = [];
-  const counters = { PUR: 0, SAL: 0, RES: 0, RCT: 0, EXP: 0, STK: 0, QUO: 0 };
+  const counters = { PUR: 0, SAL: 0, RES: 0, RCT: 0, EXP: 0, STK: 0 };
   const ref = (prefix: keyof typeof counters) => formatReference(prefix, year, ++counters[prefix]);
   const act = (a: Omit<ActivityLog, "id" | "metadata"> & { metadata?: ActivityLog["metadata"] }) =>
     activity.push({ id: newId(), metadata: {}, ...a });
@@ -497,37 +496,6 @@ export function buildDemoData({ now = new Date() }: SeedOptions = {}) {
     }
   }
 
-  // A few price quotes for cars still in stock: open, accepted-in-principle and declined.
-  const quotes: Quote[] = [];
-  const quoteBuyers = [
-    { name: "Rahul Menon", phone: "9846012345", address: "Kakkanad, Kochi", days: 2, status: "open" },
-    { name: "Sneha Varghese", phone: "9895023456", address: "Aluva", days: 5, status: "open" },
-    { name: "Arjun Nair", phone: "9744034567", address: "Thrissur", days: 9, status: "open" },
-    { name: "Fathima Rasheed", phone: "9633045678", address: "Kaloor, Kochi", days: 14, status: "declined" },
-    { name: "Vishnu Prasad", phone: "9567056789", address: "Kottayam", days: 21, status: "open" },
-  ] as const;
-  vehicles
-    .filter((v) => v.status === "available")
-    .slice(0, quoteBuyers.length)
-    .forEach((v, i) => {
-      const b = quoteBuyers[i];
-      const qDate = subDays(now, b.days);
-      const q: Quote = {
-        id: newId(), reference: ref("QUO"), vehicleId: v.id, customerName: b.name, customerPhone: b.phone, customerAddress: b.address,
-        quoteDate: iso(qDate), validUntil: iso(addDays(qDate, 15)), vehiclePricePaise: v.askingPricePaise,
-        extras: [
-          { description: "Ownership transfer (RTO)", amountPaise: 4500_00 },
-          ...(i % 2 === 0 ? [{ description: "Comprehensive insurance, 1 year", amountPaise: 18500_00 }] : []),
-        ],
-        discountPaise: i % 3 === 0 ? 10000_00 : 0, notes: i === 1 ? "Buyer wants a new set of tyres before delivery." : "",
-        status: b.status, saleId: null, createdBy: i % 2 ? "u-sales-faisal" : DEMO_USER_IDS.sales,
-        createdAt: at(qDate, 12, 10), updatedAt: at(qDate, 12, 10),
-      };
-      quotes.push(q);
-      act({ actorId: q.createdBy, entityType: "quote", entityId: q.id, action: "quote.created", timestamp: q.createdAt,
-        description: `Quoted ${v.make} ${v.model} (${v.registrationNumber}) to ${b.name}`, href: `/quote/${q.id}` });
-    });
-
   const counterRows = Object.entries(counters).map(([k, value]) => ({ key: k === "STK" ? "STK" : `${k}-${year}`, value }));
 
   return {
@@ -538,7 +506,6 @@ export function buildDemoData({ now = new Date() }: SeedOptions = {}) {
     reservations,
     sales,
     salePayments: payments,
-    quotes,
     expenses,
     activity,
     settings: [defaultSettings()],
@@ -557,7 +524,6 @@ export async function seedDatabase(db: DealerDatabase, opts: SeedOptions = {}) {
     await db.reservations.bulkAdd(data.reservations);
     await db.sales.bulkAdd(data.sales);
     await db.salePayments.bulkAdd(data.salePayments);
-    await db.quotes.bulkAdd(data.quotes);
     await db.expenses.bulkAdd(data.expenses);
     await db.activity.bulkAdd(data.activity);
     await db.settings.bulkAdd(data.settings);

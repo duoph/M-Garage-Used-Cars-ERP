@@ -2,7 +2,6 @@ import type {
   BusinessSettings,
   InvoiceTemplateId,
   ID,
-  QuoteStatus,
   User,
 } from "@/types";
 import type {
@@ -10,7 +9,6 @@ import type {
   PaymentInput,
   PurchaseEditInput,
   PurchaseFormInput,
-  QuoteInput,
   ReservationInput,
   SaleInput,
   SettingsInput,
@@ -78,11 +76,6 @@ export interface DealerCommands {
   completeSale(actor: User, input: SaleInput): Promise<ID>;
   cancelSale(actor: User, saleId: ID, reason: string): Promise<void>;
   recordPayment(actor: User, saleId: ID, input: PaymentInput): Promise<ID>;
-
-  createQuote(actor: User, input: QuoteInput): Promise<ID>;
-  updateQuote(actor: User, quoteId: ID, input: QuoteInput): Promise<void>;
-  /** Open ⇄ declined. Quotes become accepted only through a sale. */
-  setQuoteStatus(actor: User, quoteId: ID, status: Exclude<QuoteStatus, "accepted">): Promise<void>;
 
   createExpense(actor: User, input: ExpenseInput): Promise<ID>;
   updateExpense(actor: User, expenseId: ID, input: ExpenseInput): Promise<void>;
