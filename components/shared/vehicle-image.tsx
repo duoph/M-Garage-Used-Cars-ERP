@@ -23,7 +23,7 @@ export function VehicleImage({
   return (
     <div className={cn("relative overflow-hidden bg-[#eef0f3]", className)}>
       {status === "ready" && url ? (
-        // eslint-disable-next-line @next/next/no-img-element -- blob: object URLs can't use next/image
+        // eslint-disable-next-line @next/next/no-img-element -- blob: object URLs and signed R2 redirects can't use next/image
         <img src={url} alt={alt} className={cn("size-full object-cover", imgClassName)} draggable={false} />
       ) : status === "loading" ? (
         <div className="size-full animate-pulse bg-[#e9ecf0]" />

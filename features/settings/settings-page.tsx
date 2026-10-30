@@ -3,7 +3,7 @@ import * as React from "react";
 import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useLiveQuery } from "dexie-react-hooks";
-import { Check, Database, Download, HardDrive, ImagePlus, RotateCcw, Trash2, Upload } from "lucide-react";
+import { Check, Cloud, Database, Download, HardDrive, ImagePlus, RefreshCw, RotateCcw, Trash2, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { useData } from "@/components/providers/data-provider";
 import { useCurrentUser } from "@/hooks/use-auth";
@@ -18,6 +18,8 @@ import { getDb } from "@/lib/db/database";
 import { DEMO_USER_IDS, seedDatabase } from "@/lib/db/seed";
 import { clearBusinessData, exportBackup, importBackup } from "@/lib/db/backup";
 import { formatBytes, prepareLogo } from "@/lib/images/process";
+import { r2Enabled } from "@/lib/images/r2-storage";
+import { isR2Key } from "@/lib/images/r2-keys";
 import { downloadFile } from "@/lib/utils/csv";
 import { formatDate, todayISO } from "@/lib/utils/dates";
 import { Button } from "@/components/ui/button";
@@ -259,9 +261,73 @@ function LogoField() {
   );
 }
 
+type CloudUsage = { bytes: number; objects: number; quotaBytes: number };
+
+async function fetchCloudUsage(): Promise<{ usage: CloudUsage } | { error: string }> {
+  try {
+    const res = await fetch("/api/storage", { cache: "no-store" });
+    const body = (await res.json()) as CloudUsage & { error?: string };
+    return res.ok ? { usage: body } : { error: body.error ?? "Could not read cloud storage usage." };
+  } catch {
+    return { error: "Could not read cloud storage usage." };
+  }
+}
+
+function useCloudUsage() {
+  const [usage, setUsage] = React.useState<CloudUsage | null>(null);
+  const [error, setError] = React.useState<string | null>(null);
+  const [loading, setLoading] = React.useState(r2Enabled);
+  const [version, setVersion] = React.useState(0);
+  React.useEffect(() => {
+    if (!r2Enabled) return;
+    let active = true;
+    fetchCloudUsage().then((r) => {
+      if (!active) return;
+      if ("usage" in r) {
+        setUsage(r.usage);
+        setError(null);
+      } else setError(r.error);
+      setLoading(false);
+    });
+    return () => {
+      active = false;
+    };
+  }, [version]);
+  const refresh = () => {
+    setLoading(true);
+    setVersion((v) => v + 1);
+  };
+  return { usage, error, loading, refresh };
+}
+
+function UsageMeter({ used, quota, label, detail }: { used: number | null; quota: number; label: string; detail: React.ReactNode }) {
+  const pct = used != null ? (used / quota) * 100 : 0;
+  const left = used != null ? Math.max(0, quota - used) : null;
+  return (
+    <div className="flex-1">
+      <div className="flex items-baseline justify-between gap-3 text-sm">
+        <span className="font-medium">{label}</span>
+        <span className="text-xs text-muted-foreground tabular">{formatBytes(quota)} total</span>
+      </div>
+      <Progress value={Math.min(100, Math.max(pct, used ? 0.5 : 0))} className="mt-2 h-2" indicatorClassName={pct >= 90 ? "bg-destructive" : undefined} />
+      <div className="mt-2 flex flex-wrap justify-between gap-x-4 gap-y-1 text-xs tabular">
+        <span>
+          <span className="font-medium text-foreground">{used != null ? formatBytes(used) : "…"}</span>
+          <span className="text-muted-foreground"> used ({pct.toFixed(pct < 10 ? 1 : 0)}%)</span>
+        </span>
+        <span>
+          <span className="font-medium text-foreground">{left != null ? formatBytes(left) : "…"}</span>
+          <span className="text-muted-foreground"> left</span>
+        </span>
+      </div>
+      <p className="mt-1 text-xs text-muted-foreground tabular">{detail}</p>
+    </div>
+  );
+}
+
 function StorageSection() {
   const { ds } = useData();
-  const usage = useLiveQuery(async () => {
+  const local = useLiveQuery(async () => {
     let bytes = 0;
     let count = 0;
     await getDb().imageBlobs.each((b) => {
@@ -270,23 +336,59 @@ function StorageSection() {
     });
     return { bytes, count };
   }, []);
-  const quota = ds.settings.storageQuotaGb * 1024 ** 3;
-  const pct = usage ? (usage.bytes / quota) * 100 : 0;
-  const photos = ds.images.length;
+  const cloud = useCloudUsage();
+  const cloudPhotos = ds.images.filter((i) => isR2Key(i.storageKey)).length;
+  const localPhotos = ds.images.length - cloudPhotos;
   return (
-    <SettingsSection title="Photo storage" description="Photos are resized and compressed before saving. Production storage will move to Cloudflare R2.">
-      <div className="flex items-start gap-3">
-        <HardDrive className="mt-0.5 size-5 text-muted-foreground" />
-        <div className="flex-1">
-          <div className="flex items-baseline justify-between text-sm">
-            <span className="font-medium tabular">{usage ? formatBytes(usage.bytes) : "…"} used</span>
-            <span className="text-xs text-muted-foreground">of {ds.settings.storageQuotaGb} GB allowance</span>
+    <SettingsSection
+      title="Photo storage"
+      description={
+        r2Enabled
+          ? "Photos are resized and compressed in the browser, then uploaded to Cloudflare R2."
+          : "Photos are resized and compressed before saving. They are kept in this browser until Cloudflare R2 is configured."
+      }
+    >
+      <div className="grid gap-5">
+        {r2Enabled && (
+          <div className="flex items-start gap-3">
+            <Cloud className="mt-0.5 size-5 text-muted-foreground" />
+            {cloud.error && !cloud.usage ? (
+              <div className="flex-1 text-sm">
+                <p className="font-medium">Cloud storage (Cloudflare R2)</p>
+                <p className="mt-1 text-xs text-destructive">{cloud.error}</p>
+              </div>
+            ) : (
+              <UsageMeter
+                label="Cloud storage (Cloudflare R2)"
+                used={cloud.usage?.bytes ?? null}
+                quota={cloud.usage?.quotaBytes ?? 10 * 1024 ** 3}
+                detail={`${cloudPhotos} vehicle photos · ${cloud.usage?.objects ?? 0} files in the bucket incl. thumbnails`}
+              />
+            )}
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              className="-mt-1.5"
+              onClick={cloud.refresh}
+              disabled={cloud.loading}
+              aria-label="Refresh cloud storage usage"
+            >
+              <RefreshCw className={cn("size-4", cloud.loading && "animate-spin")} />
+            </Button>
           </div>
-          <Progress value={Math.max(pct, usage && usage.bytes > 0 ? 0.5 : 0)} className="mt-2 h-2" />
-          <p className="mt-2 text-xs text-muted-foreground tabular">
-            {photos} vehicle photos ({usage?.count ?? 0} stored files incl. thumbnails) · avg {photos ? formatBytes(Math.round((usage?.bytes ?? 0) / Math.max(1, photos))) : "—"} per photo
-          </p>
-        </div>
+        )}
+        {(!r2Enabled || (local?.count ?? 0) > 0) && (
+          <div className="flex items-start gap-3">
+            <HardDrive className="mt-0.5 size-5 text-muted-foreground" />
+            <UsageMeter
+              label={r2Enabled ? "This browser (older and demo photos)" : "This browser"}
+              used={local?.bytes ?? null}
+              quota={ds.settings.storageQuotaGb * 1024 ** 3}
+              detail={`${localPhotos} vehicle photos (${local?.count ?? 0} stored files incl. thumbnails) · avg ${localPhotos ? formatBytes(Math.round((local?.bytes ?? 0) / Math.max(1, localPhotos))) : "—"} per photo`}
+            />
+            {r2Enabled && <span className="w-8" />}
+          </div>
+        )}
       </div>
     </SettingsSection>
   );

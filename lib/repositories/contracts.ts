@@ -31,6 +31,14 @@ export interface ImageStorage {
   usageBytes(): Promise<number>;
 }
 
+/** Object storage reached over the network (Cloudflare R2). Keys it returns are prefixed `r2:`. */
+export interface RemoteImageStorage {
+  /** Uploads one object and returns the key to store on the image record. */
+  put(objectKey: string, blob: Blob): Promise<string>;
+  /** Deletes objects by stored key; keys that aren't remote are ignored. */
+  remove(keys: readonly string[]): Promise<void>;
+}
+
 /** A photo that has already been validated, resized and compressed on the client. */
 export interface PreparedPhoto {
   full: Blob;

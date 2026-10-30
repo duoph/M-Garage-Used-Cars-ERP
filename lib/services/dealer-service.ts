@@ -6,7 +6,10 @@ import {
   type CreatePurchaseResult,
   type DealerCommands,
   type PreparedPhoto,
+  type RemoteImageStorage,
 } from "@/lib/repositories/contracts";
+import { r2Enabled, r2ImageStorage } from "@/lib/images/r2-storage";
+import { R2_PHOTO_FOLDER, toR2Key } from "@/lib/images/r2-keys";
 import {
   canCancelPurchase,
   canCancelReservation,
@@ -147,19 +150,59 @@ async function upsertCustomer(
   return customer;
 }
 
-async function storePhotos(db: Db, vehicleId: ID, photos: readonly PreparedPhoto[], startOrder: number, hasCover: boolean) {
+interface UploadedPhoto {
+  id: ID;
+  storageKey: string;
+  thumbKey: string;
+}
+
+/**
+ * Uploads photos to remote storage ahead of the IndexedDB transaction, which can't wait on the network.
+ * If any upload fails, the ones that made it are deleted again.
+ */
+async function uploadPhotos(remote: RemoteImageStorage, vehicleId: ID, photos: readonly PreparedPhoto[]): Promise<UploadedPhoto[]> {
+  const uploaded: UploadedPhoto[] = [];
+  try {
+    for (const p of photos) {
+      const id = newId();
+      const base = `${R2_PHOTO_FOLDER}/${vehicleId}/${id}`;
+      // Recorded before uploading so a half-finished pair is still cleaned up.
+      uploaded.push({ id, storageKey: toR2Key(base), thumbKey: toR2Key(`${base}/thumb`) });
+      await Promise.all([remote.put(base, p.full), remote.put(`${base}/thumb`, p.thumb)]);
+    }
+  } catch (error) {
+    await discardUploads(remote, uploaded);
+    throw new BusinessError(error instanceof Error ? error.message : "Photo upload failed.");
+  }
+  return uploaded;
+}
+
+async function discardUploads(remote: RemoteImageStorage, uploaded: readonly UploadedPhoto[]) {
+  await remote.remove(uploaded.flatMap((u) => [u.storageKey, u.thumbKey])).catch((e) => console.error("Could not clean up uploaded photos", e));
+}
+
+async function storePhotos(
+  db: Db,
+  vehicleId: ID,
+  photos: readonly PreparedPhoto[],
+  startOrder: number,
+  hasCover: boolean,
+  uploaded?: readonly UploadedPhoto[],
+) {
   const ts = now();
   const images: VehicleImage[] = [];
   const explicitCover = photos.findIndex((p) => p.isCover);
   const coverIndex = explicitCover >= 0 ? explicitCover : 0;
   for (const [i, p] of photos.entries()) {
-    const id = newId();
-    const storageKey = `vehicles/${vehicleId}/${id}`;
-    const thumbKey = `${storageKey}/thumb`;
-    await db.imageBlobs.bulkPut([
-      { key: storageKey, blob: p.full, size: p.full.size, mimeType: p.mimeType, createdAt: ts },
-      { key: thumbKey, blob: p.thumb, size: p.thumb.size, mimeType: p.mimeType, createdAt: ts },
-    ]);
+    const remote = uploaded?.[i];
+    const id = remote?.id ?? newId();
+    const storageKey = remote?.storageKey ?? `vehicles/${vehicleId}/${id}`;
+    const thumbKey = remote?.thumbKey ?? `${storageKey}/thumb`;
+    if (!remote)
+      await db.imageBlobs.bulkPut([
+        { key: storageKey, blob: p.full, size: p.full.size, mimeType: p.mimeType, createdAt: ts },
+        { key: thumbKey, blob: p.thumb, size: p.thumb.size, mimeType: p.mimeType, createdAt: ts },
+      ]);
     images.push({
       id,
       vehicleId,
@@ -186,7 +229,11 @@ async function getOrThrow<T>(promise: Promise<T | undefined>, what: string): Pro
   return v;
 }
 
-export function createDealerService(dbFactory: () => Db = getDb): DealerCommands {
+/** `remote` is where new photos are uploaded; null keeps them in IndexedDB (the default when R2 isn't configured). */
+export function createDealerService(
+  dbFactory: () => Db = getDb,
+  remote: RemoteImageStorage | null = r2Enabled ? r2ImageStorage : null,
+): DealerCommands {
   const db = () => dbFactory();
 
   return {
@@ -199,99 +246,105 @@ export function createDealerService(dbFactory: () => Db = getDb): DealerCommands
         const max = settings?.maxPhotosPerVehicle ?? 20;
         if (photos.length > max) throw new BusinessError(`A vehicle can have at most ${max} photos.`);
       }
-      return d.transaction(
-        "rw",
-        [d.vehicles, d.purchases, d.vehicleImages, d.imageBlobs, d.counters, d.activity],
-        async () => {
-          const dup = await findDuplicateVehicle(d, input.registrationNumber, input.chassisNumber);
-          if (dup)
-            throw new BusinessError(
-              dup.field === "registrationNumber"
-                ? `A vehicle with registration ${dup.vehicle.registrationNumber} already exists in stock (${dup.vehicle.stockNumber}).`
-                : `A vehicle with this chassis number already exists in stock (${dup.vehicle.stockNumber}).`,
-              dup.field,
-            );
-          const ts = now();
-          const purchaseId = newId();
-          const vehicleId = newId();
-          const reference = await nextReference(d, "PUR");
-          const stockNumber = await nextStockNumber(d);
-          const vehicle: Vehicle = {
-            id: vehicleId,
-            stockNumber,
-            purchaseId,
-            make: input.make,
-            model: input.model,
-            variant: input.variant,
-            year: input.year,
-            registrationNumber: formatRegistration(input.registrationNumber),
-            chassisNumber: normalizeChassis(input.chassisNumber),
-            engineNumber: input.engineNumber.toUpperCase(),
-            fuelType: input.fuelType,
-            transmission: input.transmission,
-            mileageKm: input.mileageKm,
-            color: input.color,
-            previousOwners: input.previousOwners,
-            askingPricePaise: input.askingPricePaise,
-            status: "available",
-            coverImageId: null,
-            notes: input.notes,
-            archivedAt: null,
-            createdAt: ts,
-            updatedAt: ts,
-          };
-          const purchase: Purchase = {
-            id: purchaseId,
-            reference,
-            vehicleId,
-            sellerName: input.sellerName,
-            sellerContact: input.sellerContact.replace(/[\s-]/g, ""),
-            sellerAddress: input.sellerAddress,
-            sellerNotes: input.sellerNotes,
-            purchaseDate: input.purchaseDate,
-            purchasePricePaise: input.purchasePricePaise,
-            amountPaidPaise: input.amountPaidPaise,
-            paymentMethod: input.paymentMethod,
-            paymentReference: input.paymentReference,
-            notes: input.purchaseNotes,
-            status: "active",
-            createdBy: actor.id,
-            cancelledAt: null,
-            cancelReason: "",
-            createdAt: ts,
-            updatedAt: ts,
-          };
-          await d.purchases.add(purchase);
-          await d.vehicles.add(vehicle);
-          if (photos.length) {
-            const images = await storePhotos(d, vehicleId, photos, 0, false);
-            await d.vehicles.update(vehicleId, { coverImageId: images.find((i) => i.isCover)?.id ?? images[0].id });
-          }
-          const title = `${vehicle.year} ${vehicleTitle(vehicle)}`;
-          await log(d, actor, {
-            entityType: "purchase",
-            entityId: purchaseId,
-            action: "purchase.created",
-            description: `Purchased ${title} (${vehicle.registrationNumber}) from ${purchase.sellerName}`,
-            href: `/purchases/${purchaseId}`,
-            metadata: {
-              sensitive: true,
-              financial: [
-                { label: "Purchase price", after: purchase.purchasePricePaise },
-                { label: "Amount paid", after: purchase.amountPaidPaise },
-              ],
-            },
-          });
-          await log(d, actor, {
-            entityType: "vehicle",
-            entityId: vehicleId,
-            action: "vehicle.created",
-            description: `Added ${title} to stock as ${stockNumber}`,
-            href: `/inventory/${vehicleId}`,
-          });
-          return { purchaseId, vehicleId };
-        },
-      );
+      const vehicleId = newId();
+      const uploaded = remote && photos.length ? await uploadPhotos(remote, vehicleId, photos) : undefined;
+      try {
+        return await d.transaction(
+          "rw",
+          [d.vehicles, d.purchases, d.vehicleImages, d.imageBlobs, d.counters, d.activity],
+          async () => {
+            const dup = await findDuplicateVehicle(d, input.registrationNumber, input.chassisNumber);
+            if (dup)
+              throw new BusinessError(
+                dup.field === "registrationNumber"
+                  ? `A vehicle with registration ${dup.vehicle.registrationNumber} already exists in stock (${dup.vehicle.stockNumber}).`
+                  : `A vehicle with this chassis number already exists in stock (${dup.vehicle.stockNumber}).`,
+                dup.field,
+              );
+            const ts = now();
+            const purchaseId = newId();
+            const reference = await nextReference(d, "PUR");
+            const stockNumber = await nextStockNumber(d);
+            const vehicle: Vehicle = {
+              id: vehicleId,
+              stockNumber,
+              purchaseId,
+              make: input.make,
+              model: input.model,
+              variant: input.variant,
+              year: input.year,
+              registrationNumber: formatRegistration(input.registrationNumber),
+              chassisNumber: normalizeChassis(input.chassisNumber),
+              engineNumber: input.engineNumber.toUpperCase(),
+              fuelType: input.fuelType,
+              transmission: input.transmission,
+              mileageKm: input.mileageKm,
+              color: input.color,
+              previousOwners: input.previousOwners,
+              askingPricePaise: input.askingPricePaise,
+              status: "available",
+              coverImageId: null,
+              notes: input.notes,
+              archivedAt: null,
+              createdAt: ts,
+              updatedAt: ts,
+            };
+            const purchase: Purchase = {
+              id: purchaseId,
+              reference,
+              vehicleId,
+              sellerName: input.sellerName,
+              sellerContact: input.sellerContact.replace(/[\s-]/g, ""),
+              sellerAddress: input.sellerAddress,
+              sellerNotes: input.sellerNotes,
+              purchaseDate: input.purchaseDate,
+              purchasePricePaise: input.purchasePricePaise,
+              amountPaidPaise: input.amountPaidPaise,
+              paymentMethod: input.paymentMethod,
+              paymentReference: input.paymentReference,
+              notes: input.purchaseNotes,
+              status: "active",
+              createdBy: actor.id,
+              cancelledAt: null,
+              cancelReason: "",
+              createdAt: ts,
+              updatedAt: ts,
+            };
+            await d.purchases.add(purchase);
+            await d.vehicles.add(vehicle);
+            if (photos.length) {
+              const images = await storePhotos(d, vehicleId, photos, 0, false, uploaded);
+              await d.vehicles.update(vehicleId, { coverImageId: images.find((i) => i.isCover)?.id ?? images[0].id });
+            }
+            const title = `${vehicle.year} ${vehicleTitle(vehicle)}`;
+            await log(d, actor, {
+              entityType: "purchase",
+              entityId: purchaseId,
+              action: "purchase.created",
+              description: `Purchased ${title} (${vehicle.registrationNumber}) from ${purchase.sellerName}`,
+              href: `/purchases/${purchaseId}`,
+              metadata: {
+                sensitive: true,
+                financial: [
+                  { label: "Purchase price", after: purchase.purchasePricePaise },
+                  { label: "Amount paid", after: purchase.amountPaidPaise },
+                ],
+              },
+            });
+            await log(d, actor, {
+              entityType: "vehicle",
+              entityId: vehicleId,
+              action: "vehicle.created",
+              description: `Added ${title} to stock as ${stockNumber}`,
+              href: `/inventory/${vehicleId}`,
+            });
+            return { purchaseId, vehicleId };
+          },
+        );
+      } catch (error) {
+        if (remote && uploaded) await discardUploads(remote, uploaded);
+        throw error;
+      }
     },
 
     async updatePurchase(actor, purchaseId, rawInput, correctionReason) {
@@ -425,29 +478,35 @@ export function createDealerService(dbFactory: () => Db = getDb): DealerCommands
       const d = db();
       const settings = await d.settings.get("business");
       const max = settings?.maxPhotosPerVehicle ?? 20;
-      await d.transaction("rw", [d.vehicles, d.vehicleImages, d.imageBlobs, d.activity], async () => {
-        const vehicle = await getOrThrow(d.vehicles.get(vehicleId), "Vehicle");
-        const existing = await d.vehicleImages.where("vehicleId").equals(vehicleId).toArray();
-        if (existing.length + photos.length > max)
-          throw new BusinessError(`A vehicle can have at most ${max} photos (currently ${existing.length}).`);
-        const startOrder = existing.reduce((m, i) => Math.max(m, i.order + 1), 0);
-        const hasCover = existing.some((i) => i.isCover);
-        const images = await storePhotos(d, vehicleId, photos, startOrder, hasCover);
-        if (!hasCover) await d.vehicles.update(vehicleId, { coverImageId: images.find((i) => i.isCover)?.id ?? images[0].id, updatedAt: now() });
-        await log(d, actor, {
-          entityType: "vehicle",
-          entityId: vehicleId,
-          action: "photo.added",
-          description: `Added ${photos.length} photo${photos.length > 1 ? "s" : ""} to ${vehicleTitle(vehicle)}`,
-          href: `/inventory/${vehicleId}`,
+      const uploaded = remote ? await uploadPhotos(remote, vehicleId, photos) : undefined;
+      try {
+        await d.transaction("rw", [d.vehicles, d.vehicleImages, d.imageBlobs, d.activity], async () => {
+          const vehicle = await getOrThrow(d.vehicles.get(vehicleId), "Vehicle");
+          const existing = await d.vehicleImages.where("vehicleId").equals(vehicleId).toArray();
+          if (existing.length + photos.length > max)
+            throw new BusinessError(`A vehicle can have at most ${max} photos (currently ${existing.length}).`);
+          const startOrder = existing.reduce((m, i) => Math.max(m, i.order + 1), 0);
+          const hasCover = existing.some((i) => i.isCover);
+          const images = await storePhotos(d, vehicleId, photos, startOrder, hasCover, uploaded);
+          if (!hasCover) await d.vehicles.update(vehicleId, { coverImageId: images.find((i) => i.isCover)?.id ?? images[0].id, updatedAt: now() });
+          await log(d, actor, {
+            entityType: "vehicle",
+            entityId: vehicleId,
+            action: "photo.added",
+            description: `Added ${photos.length} photo${photos.length > 1 ? "s" : ""} to ${vehicleTitle(vehicle)}`,
+            href: `/inventory/${vehicleId}`,
+          });
         });
-      });
+      } catch (error) {
+        if (remote && uploaded) await discardUploads(remote, uploaded);
+        throw error;
+      }
     },
 
     async removeVehiclePhoto(actor, imageId) {
       authorize(actor, "inventory.photos");
       const d = db();
-      await d.transaction("rw", [d.vehicles, d.vehicleImages, d.imageBlobs, d.activity], async () => {
+      const removed = await d.transaction("rw", [d.vehicles, d.vehicleImages, d.imageBlobs, d.activity], async () => {
         const image = await getOrThrow(d.vehicleImages.get(imageId), "Photo");
         const vehicle = await getOrThrow(d.vehicles.get(image.vehicleId), "Vehicle");
         await d.vehicleImages.delete(imageId);
@@ -468,7 +527,11 @@ export function createDealerService(dbFactory: () => Db = getDb): DealerCommands
           description: `Removed a photo from ${vehicleTitle(vehicle)}`,
           href: `/inventory/${vehicle.id}`,
         });
+        return image;
       });
+      // The record is already gone, so a failed delete only leaves an orphaned object in the bucket.
+      if (remote)
+        await remote.remove([removed.storageKey, removed.thumbKey]).catch((e) => console.error("Could not delete photo from R2", e));
     },
 
     async reorderVehiclePhotos(actor, vehicleId, orderedIds) {

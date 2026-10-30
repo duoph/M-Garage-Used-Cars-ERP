@@ -1,10 +1,12 @@
 "use client";
 import * as React from "react";
 import { indexedDbImageStorage } from "@/lib/images/storage";
+import { isR2Key, r2ImageUrl } from "@/lib/images/r2-keys";
 
 /**
  * Ref-counted object-URL cache. Each blob key gets one object URL shared by all consumers,
  * revoked when the last consumer unmounts, so grids and galleries don't leak memory.
+ * R2 keys skip the blob step and resolve straight to their `/api/images/...` URL.
  */
 interface Entry {
   url: string | null;
@@ -16,6 +18,11 @@ const cache = new Map<string, Entry>();
 
 function acquire(key: string): Entry {
   let entry = cache.get(key);
+  if (!entry && isR2Key(key)) {
+    const url = r2ImageUrl(key);
+    entry = { url, refs: 0, promise: Promise.resolve(url) };
+    cache.set(key, entry);
+  }
   if (!entry) {
     const e: Entry = {
       url: null,
@@ -44,7 +51,7 @@ function release(key: string) {
     // Small grace period avoids churn when navigating between views that show the same photo.
     entry.revokeTimer = setTimeout(() => {
       if (entry.refs > 0) return;
-      if (entry.url) URL.revokeObjectURL(entry.url);
+      if (entry.url?.startsWith("blob:")) URL.revokeObjectURL(entry.url);
       cache.delete(key);
     }, 30_000);
   }

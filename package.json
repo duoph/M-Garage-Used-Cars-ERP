@@ -13,6 +13,8 @@
     "check": "npm run typecheck && npm run lint && npm run test"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1160.0",
+    "@aws-sdk/s3-request-presigner": "^3.1160.0",
     "@hookform/resolvers": "^6.0.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
