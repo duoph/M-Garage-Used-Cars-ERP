@@ -38,7 +38,7 @@ export function ActivityPage() {
   const [actor, setActor] = React.useState("all");
   const [range, setRange] = React.useState<DateRange>(resolvePreset("all"));
 
-  const entries = visibleActivity(ds.activity, user.role, user.id)
+  const entries = visibleActivity(ds.activity, user)
     .filter((e) => entity === "all" || e.entityType === entity)
     .filter((e) => actor === "all" || e.actorId === actor)
     .filter((e) => inRange(e.timestamp.slice(0, 10), range))

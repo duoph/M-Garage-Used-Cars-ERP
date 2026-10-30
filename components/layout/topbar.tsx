@@ -2,7 +2,9 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Bell, FileText, LogOut, Menu, Plus, Receipt, Settings, ShoppingCart, UserRoundCog, Wallet } from "lucide-react";
+import { Bell, Check, FileText, LogOut, Menu, Palette, Plus, Receipt, Settings, ShoppingCart, UserRoundCog, Wallet } from "lucide-react";
+import { THEMES } from "@/lib/themes";
+import { cn } from "@/lib/utils/cn";
 import { useAuth } from "@/hooks/use-auth";
 import { useData } from "@/components/providers/data-provider";
 import { useSessionStore } from "@/lib/store/session";
@@ -135,6 +137,8 @@ export function Topbar() {
               </DropdownMenuItem>
             ))}
             <DropdownMenuSeparator />
+            <ThemeSwatches />
+            <DropdownMenuSeparator />
             {can("settings.manage") && (
               <DropdownMenuItem onSelect={() => router.push("/settings")}>
                 <Settings /> Settings
@@ -152,5 +156,36 @@ export function Topbar() {
         </DropdownMenu>
       )}
     </header>
+  );
+}
+
+/** Quick colour-theme picker for everyone (Settings → Appearance is admin-only). */
+function ThemeSwatches() {
+  const theme = useUiStore((s) => s.theme);
+  const setTheme = useUiStore((s) => s.setTheme);
+  return (
+    <div className="px-2 py-1.5">
+      <p className="mb-1.5 flex items-center gap-1.5 text-xs text-muted-foreground"><Palette className="size-3.5" /> Theme</p>
+      <div role="radiogroup" aria-label="Colour theme" className="flex flex-wrap gap-1.5">
+        {THEMES.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            role="radio"
+            aria-checked={t.id === theme}
+            aria-label={t.label}
+            title={t.label}
+            onClick={() => setTheme(t.id)}
+            className={cn(
+              "flex size-6 items-center justify-center rounded-full ring-offset-2 ring-offset-popover outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
+              t.id === theme && "ring-2 ring-foreground/70",
+            )}
+            style={{ background: `linear-gradient(135deg, ${t.sidebar} 50%, ${t.primary} 50%)` }}
+          >
+            {t.id === theme && <Check className="size-3 text-white" aria-hidden />}
+          </button>
+        ))}
+      </div>
+    </div>
   );
 }

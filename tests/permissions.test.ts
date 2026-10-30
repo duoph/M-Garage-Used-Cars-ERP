@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { can, canAccessPath, PERMISSIONS } from "@/lib/permissions";
+import { can, canAccessPath, hasCustomAccess, PERMISSIONS, permissionsFor } from "@/lib/permissions";
 import { visibleActivity } from "@/features/activity/activity-utils";
-import type { ActivityLog } from "@/types";
+import type { ActivityLog, User } from "@/types";
 
 describe("role permissions", () => {
   it("admin has every permission", () => {
@@ -41,7 +41,32 @@ describe("role permissions", () => {
       mk({ actorId: "other" }),
       mk({ actorId: "me", action: "purchase.created", entityType: "purchase", metadata: { sensitive: true } }),
     ];
-    expect(visibleActivity(entries, "sales", "me")).toHaveLength(1);
-    expect(visibleActivity(entries, "admin", "me")).toHaveLength(3);
+    expect(visibleActivity(entries, { id: "me", role: "sales" } as User)).toHaveLength(1);
+    expect(visibleActivity(entries, { id: "me", role: "admin" } as User)).toHaveLength(3);
+  });
+});
+
+describe("custom access per user", () => {
+  it("uses the account type's defaults until an admin customises it", () => {
+    expect(can({ role: "sales" }, "finance.viewCost")).toBe(false);
+    expect(can({ role: "sales", permissions: null }, "sales.create")).toBe(true);
+  });
+
+  it("replaces the defaults with the custom list", () => {
+    const sales = { role: "sales" as const, permissions: ["inventory.view", "finance.viewCost"] };
+    expect(can(sales, "finance.viewCost")).toBe(true);
+    expect(can(sales, "sales.create")).toBe(false);
+    expect(canAccessPath(sales, "/sales")).toBe(false);
+    expect(canAccessPath(sales, "/inventory")).toBe(true);
+  });
+
+  it("never restricts an admin account", () => {
+    const admin = { role: "admin" as const, permissions: ["inventory.view"] };
+    expect(can(admin, "users.manage")).toBe(true);
+    expect(hasCustomAccess(admin)).toBe(false);
+  });
+
+  it("ignores unknown permission names", () => {
+    expect([...permissionsFor({ role: "manager", permissions: ["inventory.view", "rocket.launch"] })]).toEqual(["inventory.view"]);
   });
 });

@@ -220,3 +220,52 @@ describe("quotes", () => {
     expect((await db.quotes.get(quoteId))?.status).toBe("declined");
   });
 });
+
+describe("staff access and designations", () => {
+  it("lets an admin give one person custom access, and reset it", async () => {
+    const base = { name: sales.name, email: sales.email, phone: sales.phone, role: sales.role, status: sales.status };
+    await svc.updateUser(admin, sales.id, { ...base, permissions: ["inventory.view", "sales.view", "finance.viewCost"] });
+    let user = (await db.users.get(sales.id))!;
+    expect(user.permissions).toEqual(["inventory.view", "sales.view", "finance.viewCost"]);
+    expect((await db.activity.toArray()).some((a) => a.action === "user.access_changed")).toBe(true);
+
+    // The custom list is now enforced by the service, not just the UI.
+    await expect(svc.createExpense(user, { category: "rent", amountPaise: 100, date: "2026-01-05", description: "x", vendor: "", paymentMethod: "cash", notes: "", vehicleId: null })).rejects.toThrow(BusinessError);
+
+    // Saving without touching access keeps it.
+    await svc.updateUser(admin, sales.id, { ...base, name: "Rahul V" });
+    expect((await db.users.get(sales.id))!.permissions).toHaveLength(3);
+
+    await svc.updateUser(admin, sales.id, { ...base, permissions: null });
+    user = (await db.users.get(sales.id))!;
+    expect(user.permissions).toBeNull();
+  });
+
+  it("stores a list equal to the defaults as defaults, and ignores custom access for admins", async () => {
+    const base = { name: accountant.name, email: accountant.email, phone: accountant.phone, role: accountant.role, status: accountant.status };
+    const { ROLE_PERMISSIONS } = await import("@/lib/permissions");
+    await svc.updateUser(admin, accountant.id, { ...base, permissions: [...ROLE_PERMISSIONS.accountant] });
+    expect((await db.users.get(accountant.id))!.permissions).toBeNull();
+    await svc.updateUser(admin, accountant.id, { ...base, role: "admin", permissions: ["inventory.view"] });
+    expect((await db.users.get(accountant.id))!.permissions).toBeNull();
+  });
+
+  it("only staff managers can change access or designations", async () => {
+    const base = { name: sales.name, email: sales.email, phone: sales.phone, role: sales.role, status: sales.status };
+    await expect(svc.updateUser(accountant, sales.id, { ...base, permissions: ["users.manage"] })).rejects.toThrow(BusinessError);
+    await expect(svc.setDesignations(sales, ["Boss"])).rejects.toThrow(BusinessError);
+  });
+
+  it("keeps a clean designation list and stores a person's designation", async () => {
+    await svc.setDesignations(admin, [" Showroom Manager ", "Driver", "Driver", ""]);
+    expect((await db.settings.get("business"))!.designations).toEqual(["Showroom Manager", "Driver"]);
+    await svc.updateUser(admin, sales.id, { name: sales.name, email: sales.email, phone: sales.phone, role: sales.role, status: sales.status, designation: "Driver" });
+    expect((await db.users.get(sales.id))!.designation).toBe("Driver");
+  });
+
+  it("saves the invoice template", async () => {
+    await svc.setInvoiceTemplate(admin, "modern");
+    expect((await db.settings.get("business"))!.invoiceTemplate).toBe("modern");
+    await expect(svc.setInvoiceTemplate(sales, "bold")).rejects.toThrow(BusinessError);
+  });
+});

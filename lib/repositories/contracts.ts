@@ -1,5 +1,6 @@
 import type {
   BusinessSettings,
+  InvoiceTemplateId,
   ID,
   QuoteStatus,
   User,
@@ -91,6 +92,8 @@ export interface DealerCommands {
   updateUser(actor: User, userId: ID, input: UserInput): Promise<void>;
 
   updateSettings(actor: User, input: SettingsInput): Promise<void>;
+  setDesignations(actor: User, designations: readonly string[]): Promise<void>;
+  setInvoiceTemplate(actor: User, template: InvoiceTemplateId): Promise<void>;
   setLogo(actor: User, logo: Blob | null): Promise<void>;
 }
 

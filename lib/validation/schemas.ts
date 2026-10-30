@@ -10,6 +10,7 @@ import {
   type ExpenseCategory,
 } from "@/types";
 import { normalizeRegistration } from "@/lib/utils/ids";
+import { PERMISSIONS } from "@/lib/permissions";
 
 const MAX_PAISE = 100_00_00_000_00; // ₹100 crore ceiling guards against typos.
 
@@ -258,6 +259,9 @@ export const userSchema = z.object({
   phone: optionalIndianPhone,
   role: z.enum(ROLES),
   status: z.enum(USER_STATUSES),
+  designation: optionalText(60).optional(),
+  /** Custom access list; null keeps the account type's defaults. */
+  permissions: z.array(z.enum(PERMISSIONS)).nullable().optional(),
 });
 export type UserInput = z.infer<typeof userSchema>;
 

@@ -48,7 +48,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <main className="mx-auto w-full max-w-[1600px] flex-1 px-4 py-4 sm:px-5 lg:px-6 lg:py-5">
           {/* Keyed by path so each page fades in gently on navigation. */}
           <div key={pathname} className="animate-in fade-in-0 slide-in-from-bottom-1 duration-300 ease-out motion-reduce:animate-none">
-            {canAccessPath(user.role, pathname) ? children : <AccessDenied />}
+            {canAccessPath(user, pathname) ? children : <AccessDenied />}
           </div>
         </main>
         <footer className="no-print px-4 py-3 text-center text-[11px] text-muted-foreground/70 sm:px-6">

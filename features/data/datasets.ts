@@ -238,7 +238,7 @@ export const EXPORT_DATASETS: ExportDataset[] = [
     description: "Who changed what, and when",
     available: ({ can }) => can("activity.view"),
     build: ({ ds, idx, user }) =>
-      sheet("Activity", visibleActivity(ds.activity, user.role, user.id), [
+      sheet("Activity", visibleActivity(ds.activity, user), [
         { header: "Time", value: (a) => formatDateTime(a.timestamp), width: 18 },
         { header: "Who", value: (a) => idx.users.get(a.actorId)?.name, width: 16 },
         { header: "Action", value: (a) => a.action, width: 18 },

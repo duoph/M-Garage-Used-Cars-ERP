@@ -15,7 +15,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { can, type Permission } from "@/lib/permissions";
-import type { ActivityAction, ActivityLog, Role } from "@/types";
+import type { ActivityAction, ActivityLog, User } from "@/types";
 
 export function activityIcon(action: ActivityAction): { icon: LucideIcon; tone: string } {
   if (action.startsWith("purchase")) return { icon: ShoppingCart, tone: "bg-[#eff4ff] text-[#2948b8]" };
@@ -36,13 +36,13 @@ export function activityIcon(action: ActivityAction): { icon: LucideIcon; tone: 
 const SENSITIVE_ACTIONS: ActivityAction[] = ["purchase.created", "purchase.updated", "expense.created", "expense.updated", "expense.deleted"];
 
 /**
- * Which activity entries a role may see. Roles without full activity access only see their own
- * entries, and roles without cost visibility never see cost-related entries.
+ * Which activity entries a user may see. Users without full activity access only see their own
+ * entries, and users without cost visibility never see cost-related entries.
  */
-export function visibleActivity(entries: readonly ActivityLog[], role: Role, userId: string): ActivityLog[] {
-  const has = (p: Permission) => can(role, p);
+export function visibleActivity(entries: readonly ActivityLog[], user: User): ActivityLog[] {
+  const has = (p: Permission) => can(user, p);
   return entries.filter((e) => {
-    if (!has("activity.view") && e.actorId !== userId) return false;
+    if (!has("activity.view") && e.actorId !== user.id) return false;
     if (!has("finance.viewCost") && (e.metadata.sensitive || SENSITIVE_ACTIONS.includes(e.action))) return false;
     if (!has("users.manage") && e.entityType === "user") return false;
     return true;

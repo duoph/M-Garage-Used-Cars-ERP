@@ -52,7 +52,7 @@ export function ActivityFeed({
 }) {
   const { ds } = useData();
   const user = useCurrentUser();
-  const entries = visibleActivity(ds.activity, user.role, user.id)
+  const entries = visibleActivity(ds.activity, user)
     .filter((e) => (filter ? filter(e) : true))
     .slice(0, limit);
   if (entries.length === 0) return <EmptyState icon={History} title="No activity yet" description={emptyText} className="py-8" />;

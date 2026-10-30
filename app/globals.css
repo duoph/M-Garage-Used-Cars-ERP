@@ -98,6 +98,89 @@
   --sidebar-border: #4f1226;
   --sidebar-highlight: #fda4af;
 }
+:root[data-theme="emerald"] {
+  --primary: #047857;
+  --primary-hover: #065f46;
+  --primary-soft: #e8f6f0;
+  --secondary-foreground: #047857;
+  --accent: #e8f6f0;
+  --accent-foreground: #047857;
+  --ring: #047857;
+  --chart-1: #047857;
+  --chart-3: #2563eb;
+  --sidebar: #052e22;
+  --sidebar-foreground: #c4ecdc;
+  --sidebar-muted: #76b39b;
+  --sidebar-accent: #0b4433;
+  --sidebar-border: #0d3f30;
+  --sidebar-highlight: #6ee7b7;
+}
+:root[data-theme="ocean"] {
+  --primary: #0369a1;
+  --primary-hover: #075985;
+  --primary-soft: #e8f3fa;
+  --secondary-foreground: #0369a1;
+  --accent: #e8f3fa;
+  --accent-foreground: #0369a1;
+  --ring: #0369a1;
+  --chart-1: #0369a1;
+  --sidebar: #062a42;
+  --sidebar-foreground: #c5e3f6;
+  --sidebar-muted: #7fadc9;
+  --sidebar-accent: #0d3d5e;
+  --sidebar-border: #0c3a58;
+  --sidebar-highlight: #7dd3fc;
+}
+:root[data-theme="sunset"] {
+  --primary: #c2410c;
+  --primary-hover: #9a3412;
+  --primary-soft: #fdf1ea;
+  --secondary-foreground: #c2410c;
+  --accent: #fdf1ea;
+  --accent-foreground: #c2410c;
+  --ring: #c2410c;
+  --chart-1: #c2410c;
+  --chart-3: #0d9488;
+  --sidebar: #3a1406;
+  --sidebar-foreground: #f8d6c4;
+  --sidebar-muted: #c08f78;
+  --sidebar-accent: #57200b;
+  --sidebar-border: #4e1d0b;
+  --sidebar-highlight: #fdba74;
+}
+:root[data-theme="plum"] {
+  --primary: #7e22ce;
+  --primary-hover: #6b21a8;
+  --primary-soft: #f5edfc;
+  --secondary-foreground: #7e22ce;
+  --accent: #f5edfc;
+  --accent-foreground: #7e22ce;
+  --ring: #7e22ce;
+  --chart-1: #7e22ce;
+  --sidebar: #2a0c44;
+  --sidebar-foreground: #e4d0f7;
+  --sidebar-muted: #a98bc9;
+  --sidebar-accent: #3d1563;
+  --sidebar-border: #38135a;
+  --sidebar-highlight: #d8b4fe;
+}
+:root[data-theme="forest"] {
+  --primary: #3f6212;
+  --primary-hover: #365314;
+  --primary-soft: #f1f6e8;
+  --secondary-foreground: #3f6212;
+  --accent: #f1f6e8;
+  --accent-foreground: #3f6212;
+  --ring: #3f6212;
+  --chart-1: #3f6212;
+  --chart-3: #0369a1;
+  --sidebar: #1a2a08;
+  --sidebar-foreground: #d9e8c0;
+  --sidebar-muted: #9cb37a;
+  --sidebar-accent: #2a3f10;
+  --sidebar-border: #273a0f;
+  --sidebar-highlight: #bef264;
+}
 :root[data-theme="graphite"] {
   --primary: #3f3f46;
   --primary-hover: #27272a;

@@ -40,6 +40,11 @@ function ownerUser(): User {
   return { id: OWNER_USER_ID, name: "Owner", email: "", phone: "", role: "admin", status: "active", createdAt: ts, updatedAt: ts };
 }
 
+/** Records that this database holds real showroom data, so the fresh-start wipe never runs on it. */
+export async function markInitialized(db: DealerDatabase): Promise<void> {
+  await db.meta.put({ key: "freshStart", value: FRESH_START_VERSION });
+}
+
 /**
  * Prepares the local database on first load: a blank showroom with one Owner admin. Browsers that still
  * hold the old demo showroom are wiped once; showroom settings and the uploaded logo are kept.
@@ -56,6 +61,6 @@ export async function ensureInitialized(db: DealerDatabase): Promise<void> {
       await db.settings.put({ ...defaultSettings(), logoKey: settings?.logoKey ?? null });
     if (logo) await db.imageBlobs.put(logo);
     await db.users.add(ownerUser());
-    await db.meta.put({ key: "freshStart", value: FRESH_START_VERSION });
+    await markInitialized(db);
   });
 }

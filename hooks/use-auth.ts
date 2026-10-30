@@ -15,7 +15,7 @@ export function useAuth(): AuthState {
   const userId = useSessionStore((s) => s.userId);
   const user = userId ? idx.users.get(userId) ?? null : null;
   const active = user && user.status === "active" ? user : null;
-  const can = React.useCallback((p: Permission) => canFn(active?.role, p), [active?.role]);
+  const can = React.useCallback((p: Permission) => canFn(active, p), [active]);
   return { user: active, can };
 }
 

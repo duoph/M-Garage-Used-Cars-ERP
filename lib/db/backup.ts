@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { DealerDatabase } from "@/lib/db/database";
+import { markInitialized } from "@/lib/db/bootstrap";
 import { newId } from "@/lib/utils/ids";
 import type { User } from "@/types";
 
@@ -117,6 +118,8 @@ export async function importBackup(db: DealerDatabase, json: string, actor: User
     await db.counters.bulkAdd(tables.counters);
     await db.imageBlobs.bulkAdd(blobRecords);
     await db.meta.put({ key: "seededAt", value: new Date().toISOString() });
+    // Without this, the next load would treat the restored data as the old demo and wipe it.
+    await markInitialized(db);
     await db.activity.add({
       id: newId(), actorId: actor.id, entityType: "settings", entityId: "business", action: "data.imported",
       timestamp: new Date().toISOString(), description: "Restored data from a local backup file", href: null, metadata: {},

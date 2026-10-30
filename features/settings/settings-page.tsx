@@ -17,6 +17,8 @@ import { getDb } from "@/lib/db/database";
 import { clearBusinessData, exportBackup, importBackup } from "@/lib/db/backup";
 import { formatBytes, prepareLogo } from "@/lib/images/process";
 import { r2Enabled } from "@/lib/images/r2-storage";
+import { INVOICE_TEMPLATES, type InvoiceTemplateId } from "@/types";
+import { INVOICE_TEMPLATE_INFO } from "@/features/sales/invoice-templates";
 import { isR2Key } from "@/lib/images/r2-keys";
 import { downloadFile } from "@/lib/utils/csv";
 import { formatDate, todayISO } from "@/lib/utils/dates";
@@ -92,6 +94,7 @@ export function SettingsPage() {
       <PageHeader title="Settings" description="Showroom profile, preferences, storage and backups." />
       <div className="mb-4">
         <AppearanceSection />
+        <InvoiceTemplateSection />
       </div>
       <form onSubmit={form.handleSubmit(onSubmit)} noValidate className="grid gap-4">
         <SettingsSection title="Showroom profile" description="Shown on receipts and across the app." footer={saveBar}>
@@ -178,7 +181,7 @@ function AppearanceSection() {
   const theme = useUiStore((s) => s.theme);
   const setTheme = useUiStore((s) => s.setTheme);
   return (
-    <SettingsSection title="Appearance" description="Colour theme for the sidebar, buttons and charts. Applies instantly on this device.">
+    <SettingsSection title="Appearance" description="Colour theme for the sidebar, buttons and charts. Applies instantly on this device; everyone can also change it from their profile menu.">
       <div role="radiogroup" aria-label="Colour theme" className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
         {THEMES.map((t) => {
           const selected = t.id === theme;
@@ -215,6 +218,92 @@ function AppearanceSection() {
         })}
       </div>
     </SettingsSection>
+  );
+}
+
+function InvoiceTemplateSection() {
+  const { ds } = useData();
+  const user = useCurrentUser();
+  const current = ds.settings.invoiceTemplate ?? "classic";
+  const [saving, setSaving] = React.useState<InvoiceTemplateId | null>(null);
+  async function choose(t: InvoiceTemplateId) {
+    setSaving(t);
+    try {
+      await dealerService.setInvoiceTemplate(user, t);
+      toast.success(`${INVOICE_TEMPLATE_INFO[t].label} invoice template selected`);
+    } catch (e) {
+      reportError(e);
+    } finally {
+      setSaving(null);
+    }
+  }
+  return (
+    <SettingsSection title="Invoice template" description="Layout used when printing sale invoices. It can also be switched from the invoice's toolbar.">
+      <div role="radiogroup" aria-label="Invoice template" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        {INVOICE_TEMPLATES.map((t) => {
+          const selected = t === current;
+          return (
+            <button
+              key={t}
+              type="button"
+              role="radio"
+              aria-checked={selected}
+              disabled={saving !== null}
+              onClick={() => choose(t)}
+              className={cn(
+                "overflow-hidden rounded-lg border text-left transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring/40 disabled:opacity-70",
+                selected ? "border-primary ring-1 ring-primary" : "hover:border-foreground/20",
+              )}
+            >
+              <InvoiceThumb template={t} />
+              <div className="border-t bg-card px-2.5 py-2">
+                <div className="flex items-center justify-between text-[13px] font-medium">
+                  {INVOICE_TEMPLATE_INFO[t].label}
+                  {selected && <Check className="size-3.5 text-primary" aria-hidden />}
+                </div>
+                <p className="text-xs text-muted-foreground">{INVOICE_TEMPLATE_INFO[t].description}</p>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+    </SettingsSection>
+  );
+}
+
+/** Tiny schematic of each invoice layout for the picker. */
+function InvoiceThumb({ template }: { template: InvoiceTemplateId }) {
+  const line = "h-1 rounded-sm bg-[#d0d5dd]";
+  return (
+    <div className="flex h-24 flex-col gap-1.5 bg-[#f7f9fc] p-2.5">
+      {template === "modern" && <div className="-mx-2.5 -mt-2.5 mb-0.5 h-5 bg-primary" />}
+      {template === "bold" && <div className="h-3 w-1/2 rounded-sm bg-[#111827]" />}
+      {template === "compact" && <div className="h-1.5 w-full border-b-2 border-[#111827]" />}
+      {template === "classic" && (
+        <div className="flex justify-between">
+          <span className="h-1.5 w-1/3 rounded-sm bg-[#98a2b3]" />
+          <span className="h-1.5 w-1/5 rounded-sm bg-[#98a2b3]" />
+        </div>
+      )}
+      {template === "bold" ? (
+        <div className="grid grid-cols-3 gap-px rounded-sm bg-[#111827] p-px">
+          <span className="h-3 bg-white" />
+          <span className="h-3 bg-white" />
+          <span className="h-3 bg-[#111827]" />
+        </div>
+      ) : template === "compact" ? (
+        <div className="grid gap-px border border-[#d0d5dd] bg-[#d0d5dd]">
+          {[0, 1, 2, 3].map((i) => <span key={i} className="h-1.5 bg-white" />)}
+        </div>
+      ) : (
+        <>
+          <span className={cn(line, "w-3/4")} />
+          <span className={cn(line, "w-1/2")} />
+        </>
+      )}
+      <span className={cn(line, "mt-auto w-full")} />
+      <span className={cn("h-2 w-1/3 self-end rounded-sm", template === "modern" ? "bg-primary" : "bg-[#98a2b3]")} />
+    </div>
   );
 }
 

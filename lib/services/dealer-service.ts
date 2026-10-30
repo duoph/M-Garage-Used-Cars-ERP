@@ -1,6 +1,6 @@
 import type { DealerDatabase } from "@/lib/db/database";
 import { getDb } from "@/lib/db/database";
-import { can, type Permission } from "@/lib/permissions";
+import { can, permissionsFor, ROLE_PERMISSIONS, type Permission } from "@/lib/permissions";
 import {
   BusinessError,
   type CreatePurchaseResult,
@@ -34,6 +34,7 @@ import {
 import { formatReference, formatRegistration, newId, normalizeChassis, normalizeRegistration } from "@/lib/utils/ids";
 import { formatINR } from "@/lib/utils/money";
 import { EXPENSE_CATEGORY_LABELS, ROLE_LABELS, vehicleTitle } from "@/lib/utils/labels";
+import { INVOICE_TEMPLATES } from "@/types";
 import type {
   ActivityLog,
   ActivityMetadata,
@@ -45,6 +46,7 @@ import type {
   Reservation,
   Sale,
   SalePayment,
+  Role,
   User,
   Vehicle,
   VehicleImage,
@@ -54,7 +56,7 @@ type Db = DealerDatabase;
 
 function authorize(actor: User, permission: Permission) {
   if (actor.status !== "active") throw new BusinessError("Your account is inactive.");
-  if (!can(actor.role, permission)) throw new BusinessError("You do not have permission to perform this action.");
+  if (!can(actor, permission)) throw new BusinessError("You do not have permission to perform this action.");
 }
 
 function parse<T>(schema: { safeParse: (v: unknown) => { success: true; data: T } | { success: false; error: { issues: { message: string; path: PropertyKey[] }[] } } }, input: unknown): T {
@@ -221,6 +223,15 @@ async function storePhotos(
   }
   await db.vehicleImages.bulkAdd(images);
   return images;
+}
+
+/** Admin accounts always have full access, and a list identical to the defaults is stored as "defaults". */
+function normalizeAccess(role: Role, permissions: readonly Permission[] | null | undefined): Permission[] | null {
+  if (role === "admin" || !permissions) return null;
+  const defaults = ROLE_PERMISSIONS[role];
+  const unique = [...new Set(permissions)];
+  if (unique.length === defaults.size && unique.every((p) => defaults.has(p))) return null;
+  return unique;
 }
 
 async function getOrThrow<T>(promise: Promise<T | undefined>, what: string): Promise<T> {
@@ -834,7 +845,7 @@ export function createDealerService(
       const d = db();
       await d.transaction("rw", [d.quotes, d.vehicles, d.activity], async () => {
         const quote = await getOrThrow(d.quotes.get(quoteId), "Quote");
-        if (!can(actor.role, "sales.viewAll") && quote.createdBy !== actor.id)
+        if (!can(actor, "sales.viewAll") && quote.createdBy !== actor.id)
           throw new BusinessError("You can only edit your own quotes.");
         if (quote.status === "accepted") throw new BusinessError("This quote has already turned into a sale.");
         const vehicle = await getOrThrow(d.vehicles.get(input.vehicleId), "Vehicle");
@@ -854,7 +865,7 @@ export function createDealerService(
       const d = db();
       await d.transaction("rw", [d.quotes, d.activity], async () => {
         const quote = await getOrThrow(d.quotes.get(quoteId), "Quote");
-        if (!can(actor.role, "sales.viewAll") && quote.createdBy !== actor.id)
+        if (!can(actor, "sales.viewAll") && quote.createdBy !== actor.id)
           throw new BusinessError("You can only change your own quotes.");
         if (quote.status === "accepted") throw new BusinessError("This quote has already turned into a sale.");
         if (quote.status === status) return;
@@ -953,13 +964,20 @@ export function createDealerService(
         const clash = await d.users.where("email").equals(input.email).first();
         if (clash) throw new BusinessError("A user with this email already exists.", "email");
         const ts = now();
-        const user: User = { id: newId(), ...input, createdAt: ts, updatedAt: ts };
+        const user: User = {
+          id: newId(),
+          ...input,
+          designation: input.designation ?? "",
+          permissions: normalizeAccess(input.role, input.permissions),
+          createdAt: ts,
+          updatedAt: ts,
+        };
         await d.users.add(user);
         await log(d, actor, {
           entityType: "user",
           entityId: user.id,
           action: "user.created",
-          description: `Added ${user.name} as ${ROLE_LABELS[user.role]}`,
+          description: `Added ${user.name} as ${ROLE_LABELS[user.role]}${user.permissions ? " with custom access" : ""}`,
           href: "/staff",
         });
         return user.id;
@@ -981,7 +999,20 @@ export function createDealerService(
           throw new BusinessError("At least one active Admin / Owner account is required.");
         if (userId === actor.id && input.status !== "active")
           throw new BusinessError("You cannot deactivate your own account.", "status");
-        await d.users.update(userId, { ...input, updatedAt: now() });
+        const kept = input.role === user.role ? [...permissionsFor(user)] : null;
+        const permissions = normalizeAccess(input.role, input.permissions === undefined ? (user.permissions ? kept : null) : input.permissions);
+        const designation = input.designation ?? user.designation ?? "";
+        await d.users.update(userId, { ...input, designation, permissions, updatedAt: now() });
+        const before = [...permissionsFor(user)].sort().join();
+        const after = [...permissionsFor({ role: input.role, permissions })].sort().join();
+        if (input.role === user.role && before !== after)
+          await log(d, actor, {
+            entityType: "user",
+            entityId: userId,
+            action: "user.access_changed",
+            description: permissions ? `Customised ${user.name}'s access` : `Reset ${user.name}'s access to ${ROLE_LABELS[input.role]} defaults`,
+            href: "/staff",
+          });
         if (input.role !== user.role)
           await log(d, actor, {
             entityType: "user",
@@ -998,7 +1029,7 @@ export function createDealerService(
             description: `${input.status === "active" ? "Reactivated" : "Deactivated"} ${user.name}`,
             href: "/staff",
           });
-        if (input.name !== user.name || input.email !== user.email || input.phone !== user.phone)
+        if (input.name !== user.name || input.email !== user.email || input.phone !== user.phone || designation !== (user.designation ?? ""))
           await log(d, actor, {
             entityType: "user",
             entityId: userId,
@@ -1021,6 +1052,42 @@ export function createDealerService(
           entityId: "business",
           action: "settings.updated",
           description: "Updated showroom settings",
+          href: "/settings",
+        });
+      });
+    },
+
+    async setDesignations(actor, designations) {
+      authorize(actor, "users.manage");
+      const list = [...new Set(designations.map((x) => x.trim()).filter(Boolean))];
+      if (list.some((x) => x.length > 60)) throw new BusinessError("Keep each designation under 60 characters.");
+      const d = db();
+      await d.transaction("rw", [d.settings, d.activity], async () => {
+        const current = await getOrThrow(d.settings.get("business"), "Settings");
+        await d.settings.put({ ...current, designations: list, updatedAt: now() });
+        await log(d, actor, {
+          entityType: "settings",
+          entityId: "business",
+          action: "settings.updated",
+          description: "Updated staff designations",
+          href: "/staff",
+        });
+      });
+    },
+
+    async setInvoiceTemplate(actor, template) {
+      authorize(actor, "settings.manage");
+      if (!INVOICE_TEMPLATES.includes(template)) throw new BusinessError("Unknown invoice template.");
+      const d = db();
+      await d.transaction("rw", [d.settings, d.activity], async () => {
+        const current = await getOrThrow(d.settings.get("business"), "Settings");
+        if (current.invoiceTemplate === template) return;
+        await d.settings.put({ ...current, invoiceTemplate: template, updatedAt: now() });
+        await log(d, actor, {
+          entityType: "settings",
+          entityId: "business",
+          action: "settings.updated",
+          description: `Changed the invoice template to ${template}`,
           href: "/settings",
         });
       });

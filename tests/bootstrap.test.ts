@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { DealerDatabase } from "@/lib/db/database";
 import { ensureInitialized, OWNER_USER_ID } from "@/lib/db/bootstrap";
+import { exportBackup, importBackup } from "@/lib/db/backup";
 import { seedDatabase } from "./fixtures/demo-seed";
 
 const newDb = () => new DealerDatabase(`bootstrap-${Math.random()}`);
@@ -40,5 +41,22 @@ describe("fresh start", () => {
     await db.settings.update("business", { showroomName: "M Garage" });
     await ensureInitialized(db);
     expect((await db.settings.get("business"))?.showroomName).toBe("M Garage");
+  });
+
+  it("never wipes data restored from a backup", async () => {
+    const source = newDb();
+    await seedDatabase(source);
+    const json = await exportBackup(source);
+    const owner = (await source.users.toArray())[0];
+
+    const db = newDb();
+    await ensureInitialized(db);
+    const result = await importBackup(db, json, owner);
+    expect(result.ok).toBe(true);
+    const vehicles = await db.vehicles.count();
+    expect(vehicles).toBeGreaterThan(0);
+
+    await ensureInitialized(db);
+    expect(await db.vehicles.count()).toBe(vehicles);
   });
 });

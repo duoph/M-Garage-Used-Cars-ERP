@@ -117,6 +117,7 @@ export const ACTIVITY_ACTIONS = [
   "user.updated",
   "user.role_changed",
   "user.status_changed",
+  "user.access_changed",
   "settings.updated",
   "data.imported",
   "data.reset",
@@ -130,8 +131,16 @@ export interface User extends Timestamps {
   name: string;
   email: string;
   phone: string;
+  /** Account type: sets the default access (admin, manager, sales or accountant account). */
   role: Role;
   status: UserStatus;
+  /** Job title shown on documents and in staff lists, picked from the showroom's designations. */
+  designation?: string;
+  /**
+   * Custom access chosen by an admin, replacing the account type's defaults. Null/absent = defaults.
+   * Ignored for admin accounts, which always have full access.
+   */
+  permissions?: string[] | null;
 }
 
 export interface Vehicle extends Timestamps {
@@ -331,8 +340,15 @@ export interface BusinessSettings {
   maxUploadMb: number;
   maxPhotosPerVehicle: number;
   storageQuotaGb: number;
+  /** Job titles admins can assign to staff (e.g. "Showroom Manager", "Driver"). */
+  designations?: string[];
+  /** Layout used for sale invoices. */
+  invoiceTemplate?: InvoiceTemplateId;
   updatedAt: ISODateTime;
 }
+
+export const INVOICE_TEMPLATES = ["classic", "modern", "compact", "bold"] as const;
+export type InvoiceTemplateId = (typeof INVOICE_TEMPLATES)[number];
 
 export interface ImageBlobRecord {
   key: string;

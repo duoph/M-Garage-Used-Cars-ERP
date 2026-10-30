@@ -8,10 +8,10 @@ export function isExpired(quote: Pick<Quote, "status" | "validUntil">, today = t
 }
 
 export function canEditQuote(quote: Quote, user: User): boolean {
-  return can(user.role, "sales.create") && quote.status !== "accepted" && (can(user.role, "sales.viewAll") || quote.createdBy === user.id);
+  return can(user, "sales.create") && quote.status !== "accepted" && (can(user, "sales.viewAll") || quote.createdBy === user.id);
 }
 
 /** A sale can start from an open quote while its car is still available. */
 export function canSellFromQuote(quote: Quote, vehicle: Vehicle | undefined, user: User): boolean {
-  return can(user.role, "sales.create") && quote.status === "open" && !!vehicle && vehicle.status === "available" && !vehicle.archivedAt;
+  return can(user, "sales.create") && quote.status === "open" && !!vehicle && vehicle.status === "available" && !vehicle.archivedAt;
 }

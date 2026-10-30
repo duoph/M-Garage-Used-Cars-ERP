@@ -73,12 +73,16 @@ export function Letterhead({ title, children }: { title: string; children: React
         {s.logoKey && <ShowroomLogo className="size-14" />}
         <div>
           <h1 className="text-base font-semibold">{s.showroomName}</h1>
+          {/* Lines are skipped when empty so a half-filled profile never prints stray commas. */}
           <p className="text-xs text-[#6b7280]">
-            {s.address}
-            {s.city && `, ${s.city}`}
-            <br />
-            {s.phone}, {s.email}
-            {s.gstin && <><br />GSTIN {s.gstin}</>}
+            {[[s.address, s.city].filter(Boolean).join(", "), [s.phone, s.email].filter(Boolean).join(", "), s.gstin && `GSTIN ${s.gstin}`]
+              .filter(Boolean)
+              .map((line, i) => (
+                <React.Fragment key={i}>
+                  {i > 0 && <br />}
+                  {line}
+                </React.Fragment>
+              ))}
           </p>
         </div>
       </div>

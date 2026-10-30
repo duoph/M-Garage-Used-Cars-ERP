@@ -11,11 +11,12 @@ import type {
   VehicleStatus,
 } from "@/types";
 
+/** Account types. Internal ids stay short; the labels match the account names used in the business. */
 export const ROLE_LABELS: Record<Role, string> = {
-  admin: "Admin / Owner",
-  manager: "Manager",
-  sales: "Sales Staff",
-  accountant: "Accountant",
+  admin: "Admin account",
+  manager: "Manager account",
+  sales: "Sales account",
+  accountant: "Accountant account",
 };
 
 export const VEHICLE_STATUS_LABELS: Record<VehicleStatus, string> = {
