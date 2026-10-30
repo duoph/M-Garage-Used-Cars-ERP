@@ -9,7 +9,7 @@ import {
   type RemoteImageStorage,
 } from "@/lib/repositories/contracts";
 import { r2Enabled, r2ImageStorage } from "@/lib/images/r2-storage";
-import { R2_PHOTO_FOLDER, toR2Key } from "@/lib/images/r2-keys";
+import { toR2Key, vehiclePhotoObjectKeys } from "@/lib/images/r2-keys";
 import {
   canCancelPurchase,
   canCancelReservation,
@@ -165,10 +165,10 @@ async function uploadPhotos(remote: RemoteImageStorage, vehicleId: ID, photos: r
   try {
     for (const p of photos) {
       const id = newId();
-      const base = `${R2_PHOTO_FOLDER}/${vehicleId}/${id}`;
+      const keys = vehiclePhotoObjectKeys(vehicleId, id, p.mimeType);
       // Recorded before uploading so a half-finished pair is still cleaned up.
-      uploaded.push({ id, storageKey: toR2Key(base), thumbKey: toR2Key(`${base}/thumb`) });
-      await Promise.all([remote.put(base, p.full), remote.put(`${base}/thumb`, p.thumb)]);
+      uploaded.push({ id, storageKey: toR2Key(keys.full), thumbKey: toR2Key(keys.thumb) });
+      await Promise.all([remote.put(keys.full, p.full), remote.put(keys.thumb, p.thumb)]);
     }
   } catch (error) {
     await discardUploads(remote, uploaded);

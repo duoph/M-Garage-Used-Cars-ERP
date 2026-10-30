@@ -6,13 +6,25 @@ import { ACCEPTED_IMAGE_TYPES } from "@/lib/images/process";
  */
 export const R2_KEY_PREFIX = "r2:";
 
-/** Bucket folder that holds vehicle photos: `car-images/<vehicleId>/<imageId>[/thumb]`. */
+/**
+ * Bucket folder that holds vehicle photos. Each car gets its own subfolder:
+ * `car-images/<vehicleId>/<imageId>.webp` and `<imageId>-thumb.webp`.
+ */
 export const R2_PHOTO_FOLDER = "car-images";
+
+const EXTENSIONS: Record<string, string> = { "image/webp": "webp", "image/jpeg": "jpg", "image/png": "png" };
+
+/** Object keys for a photo and its thumbnail inside the car's folder. */
+export function vehiclePhotoObjectKeys(vehicleId: string, imageId: string, mimeType: string) {
+  const base = `${R2_PHOTO_FOLDER}/${vehicleId}/${imageId}`;
+  const ext = EXTENSIONS[mimeType] ?? "webp";
+  return { full: `${base}.${ext}`, thumb: `${base}-thumb.${ext}` };
+}
 
 /** Largest single object the upload route will sign. Photos are compressed well below this first. */
 export const R2_MAX_OBJECT_BYTES = 10 * 1024 * 1024;
 
-const VEHICLE_OBJECT_KEY = new RegExp(`^${R2_PHOTO_FOLDER}/[0-9a-f-]{36}/[0-9a-f-]{36}(/thumb)?$`);
+const VEHICLE_OBJECT_KEY = new RegExp(`^${R2_PHOTO_FOLDER}/[0-9a-f-]{36}/[0-9a-f-]{36}(-thumb)?\\.(webp|jpg|png)$`);
 
 export function isR2Key(key: string): boolean {
   return key.startsWith(R2_KEY_PREFIX);
