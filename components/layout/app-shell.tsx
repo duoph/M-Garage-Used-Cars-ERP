@@ -37,10 +37,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     <div className="min-h-dvh">
       <Sidebar />
       <Sheet open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
-        <SheetContent side="left" className="w-64 border-none p-0" hideClose>
+        <SheetContent side="left" className="w-[min(18rem,85vw)] border-none p-0" hideClose>
           <P.Title className="sr-only">Navigation</P.Title>
           <P.Description className="sr-only">Main navigation menu</P.Description>
-          <SidebarNav onNavigate={() => setMobileNavOpen(false)} />
+          <SidebarNav mobile onNavigate={() => setMobileNavOpen(false)} />
         </SheetContent>
       </Sheet>
       <div className={cn("flex min-h-dvh flex-col transition-[padding] duration-200", collapsed ? "lg:pl-[68px]" : "lg:pl-60")}>

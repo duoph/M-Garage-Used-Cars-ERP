@@ -1,81 +1,240 @@
 "use client";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { ChevronsLeft } from "lucide-react";
+import { usePathname, useRouter } from "next/navigation";
+import { ChevronsLeft, LogOut, Receipt, ShoppingCart, Wallet, X } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
 import { NAV_ITEMS, NAV_SECTIONS, isActivePath } from "@/lib/navigation";
-import { outstandingBalances } from "@/lib/calculations/selectors";
+import { activeVehicles, outstandingBalances, vehicleView } from "@/lib/calculations/selectors";
+import { purchaseBalance } from "@/lib/calculations/finance";
+import { ROLE_LABELS } from "@/lib/utils/labels";
 import { useAuth } from "@/hooks/use-auth";
 import { useData } from "@/components/providers/data-provider";
 import { useUiStore } from "@/lib/store/ui";
-import { Logo, LogoMark } from "@/components/shared/logo";
+import { useSessionStore } from "@/lib/store/session";
+import { useDialogStore } from "@/lib/store/dialogs";
+import { ShowroomLogo } from "@/components/shared/showroom-logo";
+import { UserAvatar } from "@/components/shared/user-avatar";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { AGING_DAYS } from "@/features/dashboard/needs-attention";
 
-export function SidebarNav({ collapsed = false, onNavigate }: { collapsed?: boolean; onNavigate?: () => void }) {
+type Badge = { value: number; title: string; tone: "warning" | "info" };
+
+/** Counts shown next to nav items — only when something needs action, and only to people who can act on it. */
+function useNavBadges(): Record<string, Badge | undefined> {
+  const { ds, idx } = useData();
+  const { can } = useAuth();
+  const badges: Record<string, Badge | undefined> = {};
+
+  const due = can("sales.viewAll") ? outstandingBalances(ds, idx).count : 0;
+  if (due) badges["/sales"] = { value: due, title: `${due} sale${due > 1 ? "s" : ""} with a balance due`, tone: "warning" };
+
+  if (can("inventory.view")) {
+    const aging = activeVehicles(ds).filter((v) => v.status !== "sold" && vehicleView(v, idx).stockAgeDays > AGING_DAYS).length;
+    if (aging) badges["/inventory"] = { value: aging, title: `${aging} car${aging > 1 ? "s" : ""} in stock over ${AGING_DAYS} days`, tone: "info" };
+  }
+
+  if (can("finance.viewCost")) {
+    const owed = ds.purchases.filter((p) => p.status === "active" && purchaseBalance(p) > 0).length;
+    if (owed) badges["/purchases"] = { value: owed, title: `${owed} seller${owed > 1 ? "s" : ""} still to be paid`, tone: "info" };
+  }
+  return badges;
+}
+
+/**
+ * The navigation panel, shared by the desktop sidebar and the phone drawer. `mobile` makes rows taller for
+ * thumbs and adds a close button and quick actions; `collapsed` (desktop only) shows icons with tooltips.
+ */
+export function SidebarNav({ collapsed = false, mobile = false, onNavigate }: { collapsed?: boolean; mobile?: boolean; onNavigate?: () => void }) {
   const pathname = usePathname();
   const { can } = useAuth();
-  const { ds, idx } = useData();
+  const { ds } = useData();
   const items = NAV_ITEMS.filter((i) => can(i.permission));
-
-  // Only surface a count when something needs action.
-  const due = can("sales.viewAll") ? outstandingBalances(ds, idx).count : 0;
-  const badges: Record<string, { value: number; title: string } | undefined> = {
-    "/sales": due ? { value: due, title: `${due} sales with a balance due` } : undefined,
-  };
+  const badges = useNavBadges();
 
   return (
     <div className="flex h-full flex-col bg-sidebar text-sidebar-foreground">
-      <div className={cn("flex h-12 shrink-0 items-center", collapsed ? "justify-center px-2" : "px-4")}>
-        {collapsed ? <LogoMark className="size-7" inverted /> : <Logo dark />}
+      <div className={cn("flex shrink-0 items-center gap-2.5 border-b border-sidebar-border", collapsed ? "h-12 justify-center px-2" : "h-12 px-3", mobile && "h-16")}>
+        <ShowroomLogo className={cn("size-8 shrink-0 rounded-lg text-xs ring-1 ring-white/10", mobile && "size-9")} />
+        {!collapsed && (
+          <div className="min-w-0 flex-1 leading-tight">
+            <div className={cn("truncate font-semibold text-white", mobile ? "text-[15px]" : "text-sm")} title={ds.settings.showroomName}>
+              {ds.settings.showroomName}
+            </div>
+            <div className="text-[11px] text-sidebar-muted">DealerOS</div>
+          </div>
+        )}
+        {mobile && (
+          <button
+            type="button"
+            onClick={onNavigate}
+            className="-mr-1 flex size-9 items-center justify-center rounded-md text-sidebar-muted hover:bg-sidebar-accent hover:text-white focus-visible:ring-2 focus-visible:ring-sidebar-highlight/60 outline-none"
+            aria-label="Close navigation"
+          >
+            <X className="size-5" />
+          </button>
+        )}
       </div>
-      <nav aria-label="Main" className="flex-1 overflow-y-auto px-2 py-1">
-        {NAV_SECTIONS.map((section) => {
+
+      {mobile && <QuickActions onNavigate={onNavigate} />}
+
+      <nav aria-label="Main" className="flex-1 overflow-y-auto px-2 py-2 [scrollbar-color:var(--sidebar-accent)_transparent] [scrollbar-width:thin]">
+        {NAV_SECTIONS.map((section, si) => {
           const sectionItems = items.filter((i) => i.section === section);
           if (sectionItems.length === 0) return null;
           return (
-            // Sections are separated by whitespace only — no headings to read.
-            <ul key={section} className="mb-3 grid gap-px last:mb-0">
-              {sectionItems.map((item) => {
-                const active = isActivePath(pathname, item.href);
-                const badge = badges[item.href];
-                const link = (
-                  <Link
-                    href={item.href}
-                    onClick={onNavigate}
-                    aria-current={active ? "page" : undefined}
-                    className={cn(
-                      "relative flex h-8 items-center gap-2.5 rounded-md px-2.5 text-[13px] transition-colors duration-150 outline-none focus-visible:ring-2 focus-visible:ring-sidebar-highlight/60",
-                      active ? "bg-sidebar-accent font-medium text-white" : "text-sidebar-foreground hover:bg-sidebar-accent/60 hover:text-white",
-                      collapsed && "justify-center px-0",
-                    )}
-                  >
-                    <item.icon className={cn("size-[18px] shrink-0", active ? "text-sidebar-highlight" : "text-sidebar-muted")} />
-                    {!collapsed && <span className="flex-1 truncate">{item.label}</span>}
-                    {!collapsed && badge && (
-                      <span className="rounded-full bg-[#f59e0b]/20 px-1.5 text-[11px] font-medium text-[#fcd34d] tabular" title={badge.title}>
-                        {badge.value}
-                      </span>
-                    )}
-                    {collapsed && badge && <span className="absolute top-1.5 right-2 size-1.5 rounded-full bg-[#fbbf24]" aria-hidden />}
-                  </Link>
-                );
-                return (
-                  <li key={item.href}>
-                    {collapsed ? (
-                      <Tooltip>
-                        <TooltipTrigger asChild>{link}</TooltipTrigger>
-                        <TooltipContent side="right">{item.label}</TooltipContent>
-                      </Tooltip>
-                    ) : (
-                      link
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
+            <div key={section} className="mb-3 last:mb-0">
+              {/* Overview holds only the dashboard, so it needs no heading. */}
+              {si > 0 &&
+                (collapsed ? (
+                  <div className="mx-3 mb-2 border-t border-sidebar-border" aria-hidden />
+                ) : (
+                  <p className="mb-1 px-2.5 text-[10.5px] font-semibold tracking-wider text-sidebar-muted/80 uppercase">{section}</p>
+                ))}
+              <ul className="grid gap-px">
+                {sectionItems.map((item) => {
+                  const active = isActivePath(pathname, item.href);
+                  const badge = badges[item.href];
+                  const link = (
+                    <Link
+                      href={item.href}
+                      onClick={onNavigate}
+                      aria-current={active ? "page" : undefined}
+                      className={cn(
+                        "relative flex items-center gap-2.5 rounded-md px-2.5 transition-colors duration-150 outline-none focus-visible:ring-2 focus-visible:ring-sidebar-highlight/60",
+                        mobile ? "h-10 text-[15px]" : "h-8 text-[13px]",
+                        active ? "bg-sidebar-accent font-medium text-white" : "text-sidebar-foreground hover:bg-sidebar-accent/60 hover:text-white",
+                        collapsed && "justify-center px-0",
+                      )}
+                    >
+                      {active && !collapsed && <span className="absolute inset-y-1.5 left-0 w-[3px] rounded-r-full bg-sidebar-highlight" aria-hidden />}
+                      <item.icon className={cn("shrink-0", mobile ? "size-5" : "size-[18px]", active ? "text-sidebar-highlight" : "text-sidebar-muted")} />
+                      {!collapsed && <span className="flex-1 truncate">{item.label}</span>}
+                      {!collapsed && badge && (
+                        <span
+                          className={cn(
+                            "rounded-full px-1.5 text-[11px] font-medium tabular",
+                            badge.tone === "warning" ? "bg-[#f59e0b]/20 text-[#fcd34d]" : "bg-white/10 text-sidebar-foreground",
+                          )}
+                          title={badge.title}
+                        >
+                          {badge.value}
+                        </span>
+                      )}
+                      {collapsed && badge && (
+                        <span className={cn("absolute top-1.5 right-2 size-1.5 rounded-full", badge.tone === "warning" ? "bg-[#fbbf24]" : "bg-sidebar-highlight")} aria-hidden />
+                      )}
+                    </Link>
+                  );
+                  return (
+                    <li key={item.href}>
+                      {collapsed ? (
+                        <Tooltip>
+                          <TooltipTrigger asChild>{link}</TooltipTrigger>
+                          <TooltipContent side="right">
+                            {item.label}
+                            {badge && <span className="text-muted-foreground"> · {badge.title}</span>}
+                          </TooltipContent>
+                        </Tooltip>
+                      ) : (
+                        link
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
           );
         })}
       </nav>
+
+      <UserCard collapsed={collapsed} mobile={mobile} />
+    </div>
+  );
+}
+
+/** "Add purchase / Record sale / Add expense" — on phones the topbar's New menu is a small icon, so repeat them here. */
+function QuickActions({ onNavigate }: { onNavigate?: () => void }) {
+  const { can } = useAuth();
+  const router = useRouter();
+  const openExpense = useDialogStore((s) => s.openExpense);
+  const actions = [
+    can("purchases.manage") && { label: "Purchase", icon: ShoppingCart, run: () => router.push("/purchases/new") },
+    can("sales.create") && { label: "Sale", icon: Receipt, run: () => router.push("/sales/new") },
+    can("expenses.manage") && { label: "Expense", icon: Wallet, run: () => openExpense() },
+  ].filter((a) => a !== false);
+  if (actions.length === 0) return null;
+  return (
+    <div className="grid shrink-0 gap-1.5 border-b border-sidebar-border p-3" style={{ gridTemplateColumns: `repeat(${actions.length}, minmax(0, 1fr))` }}>
+      {actions.map((a) => (
+        <button
+          key={a.label}
+          type="button"
+          onClick={() => {
+            onNavigate?.();
+            a.run();
+          }}
+          className="flex flex-col items-center gap-1 rounded-lg bg-sidebar-accent/70 py-2 text-xs font-medium text-white hover:bg-sidebar-accent focus-visible:ring-2 focus-visible:ring-sidebar-highlight/60 outline-none"
+        >
+          <a.icon className="size-[18px] text-sidebar-highlight" aria-hidden />
+          <span>+ {a.label}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** Who is signed in, with a log-out button, pinned to the bottom of the sidebar. */
+function UserCard({ collapsed, mobile }: { collapsed: boolean; mobile: boolean }) {
+  const { user } = useAuth();
+  const router = useRouter();
+  const signOut = useSessionStore((s) => s.signOut);
+  if (!user) return null;
+  const subtitle = user.designation || ROLE_LABELS[user.role];
+  const logOut = () => {
+    signOut();
+    router.replace("/login");
+  };
+
+  if (collapsed)
+    return (
+      <div className="flex shrink-0 justify-center border-t border-sidebar-border py-3">
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button type="button" onClick={logOut} className="rounded-full outline-none focus-visible:ring-2 focus-visible:ring-sidebar-highlight/60" aria-label={`${user.name} — log out`}>
+              <UserAvatar name={user.name} />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="right">
+            {user.name} · {subtitle}
+            <span className="block text-muted-foreground">Click to log out</span>
+          </TooltipContent>
+        </Tooltip>
+      </div>
+    );
+
+  return (
+    <div className={cn("flex shrink-0 items-center gap-2.5 border-t border-sidebar-border px-3", mobile ? "py-4" : "py-3")}>
+      <UserAvatar name={user.name} size={mobile ? "lg" : "md"} />
+      <div className="min-w-0 flex-1 leading-tight">
+        <div className={cn("truncate font-medium text-white", mobile ? "text-[15px]" : "text-[13px]")}>{user.name}</div>
+        <div className="truncate text-[11px] text-sidebar-muted">{subtitle}</div>
+      </div>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            onClick={logOut}
+            className={cn(
+              "flex items-center justify-center rounded-md text-sidebar-muted hover:bg-sidebar-accent hover:text-white focus-visible:ring-2 focus-visible:ring-sidebar-highlight/60 outline-none",
+              mobile ? "size-10" : "size-8",
+            )}
+            aria-label="Log out"
+          >
+            <LogOut className="size-4" />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="top">Log out</TooltipContent>
+      </Tooltip>
     </div>
   );
 }
