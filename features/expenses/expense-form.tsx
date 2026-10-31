@@ -12,6 +12,7 @@ import { CurrencyInput } from "@/components/shared/currency-input";
 import { DateField } from "@/components/shared/date-field";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { AccountSelect, useDefaultAccountId } from "@/features/accounts/shared";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectSeparator, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 export const EXPENSE_FORM_ID = "expense-form";
@@ -44,6 +45,8 @@ export function ExpenseForm({
   const errors = formState.errors;
   const category = useWatch({ control, name: "category" });
   const vehicleSpecific = isVehicleCategory(category);
+  const method = useWatch({ control, name: "paymentMethod" });
+  const defaultAccount = useDefaultAccountId(method);
 
   const vehicles = ds.vehicles
     .filter((v) => !v.archivedAt)
@@ -137,7 +140,7 @@ export function ExpenseForm({
           control={control}
           name="paymentMethod"
           render={({ field }) => (
-            <Select value={field.value} onValueChange={field.onChange}>
+            <Select value={field.value} onValueChange={(v) => { field.onChange(v); setValue("accountId", null); }}>
               <SelectTrigger id="exp-method"><SelectValue /></SelectTrigger>
               <SelectContent>
                 {PAYMENT_METHODS.map((m) => <SelectItem key={m} value={m}>{PAYMENT_METHOD_LABELS[m]}</SelectItem>)}
@@ -146,8 +149,15 @@ export function ExpenseForm({
           )}
         />
       </Field>
-      <Field label="Vendor / payee" htmlFor="exp-vendor" error={errors.vendor?.message} className="sm:col-span-2">
+      <Field label="Vendor / payee" htmlFor="exp-vendor" error={errors.vendor?.message}>
         <Input id="exp-vendor" placeholder="Optional" {...register("vendor")} />
+      </Field>
+      <Field label="Paid from" htmlFor="exp-account">
+        <Controller
+          control={control}
+          name="accountId"
+          render={({ field }) => <AccountSelect id="exp-account" value={field.value ?? defaultAccount} onChange={field.onChange} />}
+        />
       </Field>
       <Field label="Notes" htmlFor="exp-notes" error={errors.notes?.message} className="sm:col-span-2">
         <Textarea id="exp-notes" rows={2} placeholder="Optional" {...register("notes")} />

@@ -16,7 +16,6 @@ import { settingsSchema, type SettingsInput } from "@/lib/validation/schemas";
 import { getDb } from "@/lib/db/database";
 import { clearBusinessData, exportBackup, importBackup } from "@/lib/db/backup";
 import { formatBytes, prepareLogo } from "@/lib/images/process";
-import { r2Enabled } from "@/lib/images/r2-storage";
 import { INVOICE_TEMPLATES, type InvoiceTemplateId } from "@/types";
 import { INVOICE_TEMPLATE_INFO } from "@/features/sales/invoice-templates";
 import { isR2Key } from "@/lib/images/r2-keys";
@@ -181,7 +180,7 @@ function AppearanceSection() {
   const theme = useUiStore((s) => s.theme);
   const setTheme = useUiStore((s) => s.setTheme);
   return (
-    <SettingsSection title="Appearance" description="Colour theme for the sidebar, buttons and charts. Applies instantly on this device; everyone can also change it from their profile menu.">
+    <SettingsSection title="Appearance" description="Colour theme for the sidebar, buttons and charts. Applies instantly on this device.">
       <div role="radiogroup" aria-label="Colour theme" className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
         {THEMES.map((t) => {
           const selected = t.id === theme;
@@ -363,10 +362,9 @@ async function fetchCloudUsage(): Promise<{ usage: CloudUsage } | { error: strin
 function useCloudUsage() {
   const [usage, setUsage] = React.useState<CloudUsage | null>(null);
   const [error, setError] = React.useState<string | null>(null);
-  const [loading, setLoading] = React.useState(r2Enabled);
+  const [loading, setLoading] = React.useState(true);
   const [version, setVersion] = React.useState(0);
   React.useEffect(() => {
-    if (!r2Enabled) return;
     let active = true;
     fetchCloudUsage().then((r) => {
       if (!active) return;
@@ -429,51 +427,45 @@ function StorageSection() {
   return (
     <SettingsSection
       title="Photo storage"
-      description={
-        r2Enabled
-          ? "Photos are resized and compressed in the browser, then uploaded to Cloudflare R2."
-          : "Photos are resized and compressed before saving. They are kept in this browser until Cloudflare R2 is configured."
-      }
+      description="Photos are resized and compressed in the browser, then uploaded to Cloudflare R2. Business records stay on this device until the cloud database is connected."
     >
       <div className="grid gap-5">
-        {r2Enabled && (
-          <div className="flex items-start gap-3">
-            <Cloud className="mt-0.5 size-5 text-muted-foreground" />
-            {cloud.error && !cloud.usage ? (
-              <div className="flex-1 text-sm">
-                <p className="font-medium">Cloud storage (Cloudflare R2)</p>
-                <p className="mt-1 text-xs text-destructive">{cloud.error}</p>
-              </div>
-            ) : (
-              <UsageMeter
-                label="Cloud storage (Cloudflare R2)"
-                used={cloud.usage?.bytes ?? null}
-                quota={cloud.usage?.quotaBytes ?? 10 * 1024 ** 3}
-                detail={`${cloudPhotos} vehicle photos · ${cloud.usage?.objects ?? 0} files in the bucket incl. thumbnails`}
-              />
-            )}
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              className="-mt-1.5"
-              onClick={cloud.refresh}
-              disabled={cloud.loading}
-              aria-label="Refresh cloud storage usage"
-            >
-              <RefreshCw className={cn("size-4", cloud.loading && "animate-spin")} />
-            </Button>
-          </div>
-        )}
-        {(!r2Enabled || (local?.count ?? 0) > 0) && (
+        <div className="flex items-start gap-3">
+          <Cloud className="mt-0.5 size-5 text-muted-foreground" />
+          {cloud.error && !cloud.usage ? (
+            <div className="flex-1 text-sm">
+              <p className="font-medium">Cloud storage (Cloudflare R2)</p>
+              <p className="mt-1 text-xs text-destructive">{cloud.error}</p>
+            </div>
+          ) : (
+            <UsageMeter
+              label="Cloud storage (Cloudflare R2)"
+              used={cloud.usage?.bytes ?? null}
+              quota={cloud.usage?.quotaBytes ?? 10 * 1024 ** 3}
+              detail={`${cloudPhotos} vehicle photos · ${cloud.usage?.objects ?? 0} files in the bucket incl. thumbnails`}
+            />
+          )}
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            className="-mt-1.5"
+            onClick={cloud.refresh}
+            disabled={cloud.loading}
+            aria-label="Refresh cloud storage usage"
+          >
+            <RefreshCw className={cn("size-4", cloud.loading && "animate-spin")} />
+          </Button>
+        </div>
+        {(local?.count ?? 0) > 0 && (
           <div className="flex items-start gap-3">
             <HardDrive className="mt-0.5 size-5 text-muted-foreground" />
             <UsageMeter
-              label={r2Enabled ? "This browser (photos added before R2)" : "This browser"}
+              label="This browser (older photos, not used for new uploads)"
               used={local?.bytes ?? null}
               quota={ds.settings.storageQuotaGb * 1024 ** 3}
               detail={`${localPhotos} vehicle photos (${local?.count ?? 0} stored files incl. thumbnails) · avg ${localPhotos ? formatBytes(Math.round((local?.bytes ?? 0) / Math.max(1, localPhotos))) : "—"} per photo`}
             />
-            {r2Enabled && <span className="w-8" />}
+            <span className="w-8" />
           </div>
         )}
       </div>

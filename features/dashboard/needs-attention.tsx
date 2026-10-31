@@ -1,10 +1,11 @@
 "use client";
 import Link from "next/link";
-import { ArrowRight, CheckCircle2, Clock, HandCoins, ImageOff, Hourglass, Landmark, type LucideIcon } from "lucide-react";
+import { ArrowRight, CheckCircle2, Clock, FileWarning, HandCoins, ImageOff, Hourglass, Landmark, type LucideIcon } from "lucide-react";
 import { useData } from "@/components/providers/data-provider";
 import { useAuth } from "@/hooks/use-auth";
 import { activeVehicles, saleView, vehicleView } from "@/lib/calculations/selectors";
 import { purchaseBalance } from "@/lib/calculations/finance";
+import { paperAlerts } from "@/lib/calculations/papers";
 import { daysSince } from "@/lib/utils/dates";
 import { formatINR, formatINRCompact, sumPaise } from "@/lib/utils/money";
 import { vehicleTitle } from "@/lib/utils/labels";
@@ -97,6 +98,23 @@ export function useAttentionTasks(): Task[] {
         detail: `Balance on purchases not yet fully paid.`,
         href: "/purchases?payment=unsettled",
       });
+  }
+
+  // Insurance / PUC / RC running out on cars in stock, and hypothecated cars still waiting for the bank NOC.
+  const papers = stock.map((v) => ({ v, alerts: paperAlerts(v.vehicle) })).filter((x) => x.alerts.length);
+  if (papers.length) {
+    const expired = papers.filter((x) => x.alerts.some((a) => a.status === "expired")).length;
+    const first = papers[0];
+    tasks.push({
+      id: "papers",
+      icon: FileWarning,
+      tone: expired ? "danger" : "warning",
+      title: `${papers.length} car${papers.length > 1 ? "s" : ""} with papers to renew`,
+      detail: `${vehicleTitle(first.v.vehicle)} (${first.v.vehicle.registrationNumber}): ${first.alerts
+        .map((a) => (a.key === "noc" ? `${a.label} pending` : `${a.label} ${a.status === "expired" ? "expired" : `expires in ${a.days} days`}`))
+        .join(", ")}.`,
+      href: papers.length === 1 ? `/inventory/${first.v.vehicle.id}` : "/inventory?papers=attention",
+    });
   }
 
   if (can("inventory.photos")) {

@@ -1,6 +1,7 @@
 "use client";
 import * as React from "react";
 import Link from "next/link";
+import { paperAlerts } from "@/lib/calculations/papers";
 import { useSearchParams } from "next/navigation";
 import { CarFront, Download, LayoutGrid, List, Plus, SearchX, SlidersHorizontal, X } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
@@ -60,8 +61,13 @@ export function InventoryPage() {
     sort: (Object.keys(SORT_LABELS) as InventorySort[]).find((s) => s === params.get("sort")) ?? "newest",
   }));
 
+  // The dashboard links here to list cars whose insurance, PUC or RC needs renewing.
+  const [papersOnly, setPapersOnly] = React.useState(params.get("papers") === "attention");
   const all = React.useMemo(() => activeVehicles(ds).map((v) => vehicleView(v, idx)), [ds, idx]);
-  const rows = React.useMemo(() => applyInventoryFilters(all, filters), [all, filters]);
+  const rows = React.useMemo(
+    () => applyInventoryFilters(papersOnly ? all.filter((v) => v.vehicle.status !== "sold" && paperAlerts(v.vehicle).length > 0) : all, filters),
+    [all, filters, papersOnly],
+  );
   const counts = inventoryCounts(ds, idx);
   const nFilters = activeFilterCount(filters);
   const statusCount: Record<InventoryFilters["status"], number> = {
@@ -98,7 +104,16 @@ export function InventoryPage() {
     <>
       <PageHeader
         title="Vehicle Inventory"
-        description="Manage and track all vehicles in your showroom. Click a car to see photos, costs and history."
+        description={
+          papersOnly ? (
+            <>
+              Cars in stock with insurance, PUC or RC to renew, or a bank NOC pending.{" "}
+              <button type="button" className="font-medium text-primary hover:underline" onClick={() => setPapersOnly(false)}>Show all cars</button>
+            </>
+          ) : (
+            "Manage and track all vehicles in your showroom. Click a car to see photos, costs and history."
+          )
+        }
         actions={
           <>
             {can("inventory.export") && (

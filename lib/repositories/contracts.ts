@@ -5,7 +5,10 @@ import type {
   User,
 } from "@/types";
 import type {
+  AccountInput,
+  DocumentMetaInput,
   ExpenseInput,
+  PapersInput,
   PaymentInput,
   PurchaseEditInput,
   PurchaseFormInput,
@@ -14,6 +17,7 @@ import type {
   SettingsInput,
   UserInput,
   VehicleEditInput,
+  VoucherInput,
 } from "@/lib/validation/schemas";
 
 /**
@@ -69,6 +73,7 @@ export interface DealerCommands {
   removeVehiclePhoto(actor: User, imageId: ID): Promise<void>;
   reorderVehiclePhotos(actor: User, vehicleId: ID, orderedIds: readonly ID[]): Promise<void>;
   setCoverPhoto(actor: User, imageId: ID): Promise<void>;
+  updateVehiclePapers(actor: User, vehicleId: ID, input: PapersInput): Promise<void>;
 
   reserveVehicle(actor: User, vehicleId: ID, input: ReservationInput): Promise<ID>;
   cancelReservation(actor: User, reservationId: ID, reason: string): Promise<void>;
@@ -80,6 +85,14 @@ export interface DealerCommands {
   createExpense(actor: User, input: ExpenseInput): Promise<ID>;
   updateExpense(actor: User, expenseId: ID, input: ExpenseInput): Promise<void>;
   deleteExpense(actor: User, expenseId: ID): Promise<void>;
+
+  createAccount(actor: User, input: AccountInput): Promise<ID>;
+  updateAccount(actor: User, accountId: ID, input: AccountInput): Promise<void>;
+  createVoucher(actor: User, input: VoucherInput): Promise<ID>;
+  cancelVoucher(actor: User, voucherId: ID, reason: string): Promise<void>;
+
+  uploadDocument(actor: User, meta: DocumentMetaInput, file: Blob, fileName: string): Promise<ID>;
+  removeDocument(actor: User, documentId: ID): Promise<void>;
 
   createUser(actor: User, input: UserInput): Promise<ID>;
   updateUser(actor: User, userId: ID, input: UserInput): Promise<void>;

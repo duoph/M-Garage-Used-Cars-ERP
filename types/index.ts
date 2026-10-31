@@ -23,7 +23,7 @@ export interface Timestamps {
 
 // ─── Enumerations ──────────────────────────────────────────────────────────────
 
-export const ROLES = ["admin", "manager", "sales", "accountant"] as const;
+export const ROLES = ["admin", "manager", "office", "sales", "accountant"] as const;
 export type Role = (typeof ROLES)[number];
 
 export const USER_STATUSES = ["active", "inactive"] as const;
@@ -85,6 +85,9 @@ export const ENTITY_TYPES = [
   "expense",
   "user",
   "settings",
+  "account",
+  "voucher",
+  "document",
 ] as const;
 export type EntityType = (typeof ENTITY_TYPES)[number];
 
@@ -114,6 +117,13 @@ export const ACTIVITY_ACTIONS = [
   "settings.updated",
   "data.imported",
   "data.reset",
+  "vehicle.papers_updated",
+  "account.created",
+  "account.updated",
+  "voucher.created",
+  "voucher.cancelled",
+  "document.uploaded",
+  "document.removed",
 ] as const;
 export type ActivityAction = (typeof ACTIVITY_ACTIONS)[number];
 
@@ -159,6 +169,32 @@ export interface Vehicle extends Timestamps {
   notes: string;
   /** Set when the originating purchase is cancelled; archived vehicles leave active stock. */
   archivedAt: ISODateTime | null;
+  /** Insurance, pollution, RC validity and hypothecation. Absent on cars added before papers were tracked. */
+  papers?: VehiclePapers;
+}
+
+export const INSURANCE_TYPES = ["comprehensive", "third_party", "zero_dep", "none"] as const;
+export type InsuranceType = (typeof INSURANCE_TYPES)[number];
+
+export interface VehiclePapers {
+  insuranceType: InsuranceType;
+  insuranceCompany: string;
+  insurancePolicyNumber: string;
+  /** Empty when unknown. */
+  insuranceValidTill: ISODate | "";
+  pucValidTill: ISODate | "";
+  /** Registration (RC) validity. */
+  rcValidTill: ISODate | "";
+  fitnessValidTill: ISODate | "";
+  hypothecated: boolean;
+  financierName: string;
+  /** Loan closure / NOC collected from the financier. */
+  nocReceived: boolean;
+  /** Original RC book/card with the showroom. */
+  rcInHand: boolean;
+  spareKey: boolean;
+  serviceRecords: boolean;
+  notes: string;
 }
 
 export interface Purchase extends Timestamps {
@@ -184,7 +220,7 @@ export interface Purchase extends Timestamps {
 export interface VehicleImage extends Timestamps {
   id: ID;
   vehicleId: ID;
-  /** Key into the image store: `r2:`-prefixed keys are in Cloudflare R2, others are IndexedDB blobs. */
+  /** `r2:`-prefixed keys live in Cloudflare R2. Keys without the prefix are leftover browser blobs. */
   storageKey: string;
   thumbKey: string;
   mimeType: string;
@@ -249,6 +285,10 @@ export interface SalePayment extends Timestamps {
   /** "booking" payments originate from a reservation deposit. */
   kind: "booking" | "payment";
   recordedBy: ID;
+  /** Cash or bank account the money went into. Absent = the default account for the payment method. */
+  accountId?: ID | null;
+  /** Staff member who physically received the money (the cash receiver). Absent = whoever recorded it. */
+  receivedBy?: ID | null;
 }
 
 export interface Expense extends Timestamps {
@@ -263,6 +303,132 @@ export interface Expense extends Timestamps {
   paymentMethod: PaymentMethod;
   notes: string;
   createdBy: ID;
+  /** Cash or bank account the expense was paid from. Absent = the default account for the payment method. */
+  accountId?: ID | null;
+}
+
+// ─── Accounting ────────────────────────────────────────────────────────────────
+
+export const ACCOUNT_KINDS = ["cash", "bank"] as const;
+export type AccountKind = (typeof ACCOUNT_KINDS)[number];
+
+/** A cash drawer or bank account money moves in and out of. */
+export interface MoneyAccount extends Timestamps {
+  id: ID;
+  name: string;
+  kind: AccountKind;
+  bankName: string;
+  /** Account number as printed; only the last digits are shown in lists. */
+  accountNumber: string;
+  ifsc: string;
+  upiId: string;
+  /** Cash accounts: the staff member who holds this cash (the cash receiver). */
+  custodianId: ID | null;
+  openingBalancePaise: Paise;
+  openingDate: ISODate;
+  /** Default cash account takes cash; default bank account takes UPI, cards, cheques and transfers. */
+  isDefault: boolean;
+  archived: boolean;
+  notes: string;
+}
+
+export const VOUCHER_TYPES = ["receipt", "payment", "contra"] as const;
+export type VoucherType = (typeof VOUCHER_TYPES)[number];
+
+/** What a receipt voucher is for. Buyer payments against a sale are recorded as sale payments instead. */
+export const RECEIPT_HEADS = [
+  "other_income",
+  "commission_received",
+  "service_charges",
+  "capital_introduced",
+  "loan_received",
+  "refund_from_seller",
+  "misc_receipt",
+] as const;
+/** What a payment voucher is for. Showroom running costs are recorded as expenses instead. */
+export const PAYMENT_HEADS = [
+  "seller_payment",
+  "refund_to_buyer",
+  "commission_paid",
+  "staff_advance",
+  "owner_drawings",
+  "loan_repayment",
+  "misc_payment",
+] as const;
+export const CONTRA_HEADS = ["transfer"] as const;
+export type ReceiptHead = (typeof RECEIPT_HEADS)[number];
+export type PaymentHead = (typeof PAYMENT_HEADS)[number];
+export type VoucherHead = ReceiptHead | PaymentHead | (typeof CONTRA_HEADS)[number];
+
+export const VOUCHER_STATUSES = ["active", "cancelled"] as const;
+export type VoucherStatus = (typeof VOUCHER_STATUSES)[number];
+
+/** Receipt (money in), payment (money out) or contra (between the showroom's own accounts). */
+export interface Voucher extends Timestamps {
+  id: ID;
+  /** RV-2026-0001, PV-2026-0001 or CV-2026-0001. */
+  number: string;
+  type: VoucherType;
+  head: VoucherHead;
+  date: ISODate;
+  amountPaise: Paise;
+  method: PaymentMethod;
+  /** Account money came into (receipt), went out of (payment), or left (contra). */
+  accountId: ID;
+  /** Contra only: the account the money moved to. */
+  toAccountId: ID | null;
+  partyName: string;
+  partyPhone: string;
+  /** Cheque / UTR / transaction number. */
+  reference: string;
+  narration: string;
+  /** Seller payments settle this purchase's balance. */
+  purchaseId: ID | null;
+  /** Refunds to a buyer point at the cancelled sale. */
+  saleId: ID | null;
+  /** Staff member who handed over or received the money. */
+  handledBy: ID;
+  status: VoucherStatus;
+  createdBy: ID;
+  cancelledAt: ISODateTime | null;
+  cancelReason: string;
+}
+
+// ─── Documents ─────────────────────────────────────────────────────────────────
+
+export const DOCUMENT_KINDS = [
+  "id_proof",
+  "address_proof",
+  "pan_card",
+  "sale_letter",
+  "delivery_note",
+  "rc",
+  "insurance",
+  "puc",
+  "noc",
+  "form_29_30",
+  "other",
+] as const;
+export type DocumentKind = (typeof DOCUMENT_KINDS)[number];
+
+export const DOCUMENT_OWNERS = ["vehicle", "purchase", "sale"] as const;
+export type DocumentOwner = (typeof DOCUMENT_OWNERS)[number];
+
+/** A scanned paper (ID proof, sale letter, RC…) stored in Cloudflare R2. */
+export interface StoredDocument extends Timestamps {
+  id: ID;
+  ownerType: DocumentOwner;
+  ownerId: ID;
+  /** Vehicle the paper belongs to, so every paper of a car can be listed together. */
+  vehicleId: ID | null;
+  kind: DocumentKind;
+  /** Free label, e.g. "Aadhaar — front". */
+  title: string;
+  fileName: string;
+  storageKey: string;
+  mimeType: string;
+  size: number;
+  uploadedBy: ID;
 }
 
 export interface ActivityLog {

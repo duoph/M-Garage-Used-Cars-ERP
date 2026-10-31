@@ -19,8 +19,13 @@ export const r2ImageStorage: RemoteImageStorage = {
     });
     if (!presign.ok) throw new Error(await errorMessage(presign, "Could not start the photo upload."));
     const { url } = (await presign.json()) as { url: string };
-    const upload = await fetch(url, { method: "PUT", headers: { "Content-Type": blob.type }, body: blob });
-    if (!upload.ok) throw new Error("Photo upload failed. Check your connection and try again.");
+    let upload: Response;
+    try {
+      upload = await fetch(url, { method: "PUT", headers: { "Content-Type": blob.type }, body: blob });
+    } catch {
+      throw new Error("The image could not reach Cloudflare. Check your connection and try again.");
+    }
+    if (!upload.ok) throw new Error("The image could not be saved to Cloudflare. Try again.");
     return toR2Key(objectKey);
   },
   async remove(keys) {

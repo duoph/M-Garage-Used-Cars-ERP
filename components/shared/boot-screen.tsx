@@ -2,7 +2,7 @@
 import { usePathname } from "next/navigation";
 import { AlertTriangle } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Logo, LogoMark } from "./logo";
+import { LogoMark, Wordmark } from "./logo";
 
 /**
  * Shown while the local database opens. Inside the app it mirrors the real layout so the
@@ -13,7 +13,7 @@ export function BootScreen({ error }: { error?: string }) {
   if (error)
     return (
       <div className="flex min-h-dvh flex-col items-center justify-center gap-4 bg-background px-6 text-center">
-        <Logo />
+        <Wordmark className="w-56" />
         <div className="max-w-md rounded-xl border bg-card p-4 text-sm">
           <AlertTriangle className="mx-auto mb-2 size-5 text-warning" />
           <p className="font-medium">Unable to start</p>
@@ -25,7 +25,7 @@ export function BootScreen({ error }: { error?: string }) {
   if (pathname.startsWith("/login") || pathname.startsWith("/receipt"))
     return (
       <div className="flex min-h-dvh flex-col items-center justify-center gap-4" role="status" aria-label="Loading">
-        <LogoMark className="size-10 animate-pulse" />
+        <LogoMark large className="size-24 animate-pulse" />
       </div>
     );
 

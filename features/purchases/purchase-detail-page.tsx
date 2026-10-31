@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { Controller, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Ban, Pencil, ShoppingCart } from "lucide-react";
+import { Ban, HandCoins, Pencil, ShoppingCart } from "lucide-react";
 import { toast } from "sonner";
 import { useData } from "@/components/providers/data-provider";
 import { useAuth, useCurrentUser } from "@/hooks/use-auth";
@@ -33,6 +33,8 @@ import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { VehicleImage } from "@/components/shared/vehicle-image";
 import { PaymentStatusBadge, PurchaseStatusBadge, VehicleStatusBadge } from "@/components/shared/status-badge";
 import { ActivityFeed } from "@/features/activity/activity-feed";
+import { DocumentsCard } from "@/features/documents/documents-card";
+import { useDialogStore } from "@/lib/store/dialogs";
 
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -48,6 +50,7 @@ export function PurchaseDetailPage() {
   const { idx } = useData();
   const { can } = useAuth();
   const user = useCurrentUser();
+  const openVoucher = useDialogStore((s) => s.openVoucher);
   const [editing, setEditing] = React.useState(false);
   const [cancelling, setCancelling] = React.useState(false);
   const purchase = idx.purchases.get(id);
@@ -79,14 +82,19 @@ export function PurchaseDetailPage() {
         description={`Purchased on ${formatDate(purchase.purchaseDate)} from ${purchase.sellerName}`}
         breadcrumbs={[{ label: "Purchases", href: "/purchases" }, { label: purchase.reference }]}
         actions={
-          editable && (
-            <>
-              <Button variant="outline" onClick={() => setCancelling(true)} disabled={!cancelCheck.ok} title={cancelCheck.ok ? undefined : cancelCheck.message}>
-                <Ban /> Cancel purchase
-              </Button>
-              <Button onClick={() => setEditing(true)}><Pencil /> Edit purchase</Button>
-            </>
-          )
+          <>
+            {editable && (
+              <>
+                <Button variant="outline" onClick={() => setCancelling(true)} disabled={!cancelCheck.ok} title={cancelCheck.ok ? undefined : cancelCheck.message}>
+                  <Ban /> Cancel purchase
+                </Button>
+                <Button variant={purchaseBalance(purchase) > 0 && can("accounts.manage") ? "outline" : "default"} onClick={() => setEditing(true)}><Pencil /> Edit purchase</Button>
+              </>
+            )}
+            {purchase.status === "active" && purchaseBalance(purchase) > 0 && can("accounts.manage") && (
+              <Button onClick={() => openVoucher({ type: "payment", purchaseId: purchase.id })}><HandCoins /> Pay seller</Button>
+            )}
+          </>
         }
       />
       {purchase.status === "cancelled" && (
@@ -167,6 +175,14 @@ export function PurchaseDetailPage() {
             </CardContent>
           </Card>
         )}
+        <DocumentsCard
+          ownerType="purchase"
+          ownerId={purchase.id}
+          title="Seller documents"
+          description="Seller's ID proof, the signed sale letter, RC and bank NOC."
+          checklist={["id_proof", "sale_letter", "rc", ...(vehicle?.papers?.hypothecated ? (["noc"] as const) : [])]}
+          className="lg:col-span-2"
+        />
         <Card>
           <CardHeader className="pb-0"><CardTitle>History</CardTitle></CardHeader>
           <div className="px-4">

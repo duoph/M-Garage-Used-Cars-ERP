@@ -12,11 +12,8 @@ import { VehicleImage } from "@/components/shared/vehicle-image";
 import { vehicleTitle } from "@/lib/utils/labels";
 import { formatINR } from "@/lib/utils/money";
 
-const noopSubscribe = () => () => {};
-
 export function GlobalSearchTrigger() {
   const setOpen = useDialogStore((s) => s.setSearch);
-  const isMac = React.useSyncExternalStore(noopSubscribe, () => /Mac|iPhone|iPad/.test(navigator.userAgent), () => true);
   return (
     <button
       type="button"
@@ -25,7 +22,6 @@ export function GlobalSearchTrigger() {
     >
       <Search className="size-4" />
       <span className="truncate">Search vehicles, registrations, sales…</span>
-      <kbd className="ml-auto hidden rounded border bg-card px-1.5 py-0.5 font-mono text-[10px] sm:inline">{isMac ? "⌘K" : "Ctrl K"}</kbd>
     </button>
   );
 }

@@ -26,6 +26,9 @@ const ENTITY_LABELS: Record<EntityType, string> = {
   expense: "Expenses",
   user: "Users",
   settings: "Settings & data",
+  account: "Cash & bank accounts",
+  voucher: "Vouchers",
+  document: "Documents",
 };
 
 export function ActivityPage() {

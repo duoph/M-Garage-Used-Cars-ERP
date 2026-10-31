@@ -1,18 +1,24 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { deleteObjects, presignUpload } from "@/lib/server/r2";
-import { R2_MAX_OBJECT_BYTES, isAcceptedImageType, isValidVehicleObjectKey } from "@/lib/images/r2-keys";
+import { R2_MAX_OBJECT_BYTES, isAcceptedDocumentType, isAcceptedImageType, isDocumentObjectKey, isValidObjectKey } from "@/lib/images/r2-keys";
 
 // TODO(auth): these endpoints are open until real sign-in lands (PRODUCTION_READINESS.md §1–2).
 // Keys, types and sizes are restricted below, but any caller can still upload or delete vehicle photos.
 
-const objectKey = z.string().refine(isValidVehicleObjectKey, "Invalid object key");
+const objectKey = z.string().refine(isValidObjectKey, "Invalid object key");
 
-const presignSchema = z.object({
-  key: objectKey,
-  contentType: z.string().refine(isAcceptedImageType, "Only JPEG, PNG and WebP images are supported"),
-  size: z.number().int().positive().max(R2_MAX_OBJECT_BYTES, "File is too large"),
-});
+const presignSchema = z
+  .object({
+    key: objectKey,
+    contentType: z.string(),
+    size: z.number().int().positive().max(R2_MAX_OBJECT_BYTES, "File is too large"),
+  })
+  // Documents may also be PDFs; photos and logos must be images.
+  .refine((v) => (isDocumentObjectKey(v.key) ? isAcceptedDocumentType(v.contentType) : isAcceptedImageType(v.contentType)), {
+    message: "This file type is not supported",
+    path: ["contentType"],
+  });
 
 const deleteSchema = z.object({ keys: z.array(objectKey).min(1).max(100) });
 

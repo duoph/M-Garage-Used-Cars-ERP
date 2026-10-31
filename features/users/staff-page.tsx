@@ -33,6 +33,7 @@ import { cn } from "@/lib/utils/cn";
 const ROLE_DESCRIPTIONS: Record<Role, string> = {
   admin: "Everything, including staff accounts, access, settings and all financials. Always full access.",
   manager: "Purchases, inventory, sales, expenses, reports and profit. No staff or settings.",
+  office: "Front office: vehicle papers, documents, cash and bank vouchers, receipts and expenses. No cost or profit.",
   sales: "Stock, photos, reservations, sales and receipts. Never sees costs or profit.",
   accountant: "Payments, expenses, financial reports and exports. Cannot edit vehicles.",
 };

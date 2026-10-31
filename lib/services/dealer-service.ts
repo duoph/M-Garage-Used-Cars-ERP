@@ -9,7 +9,15 @@ import {
   type RemoteImageStorage,
 } from "@/lib/repositories/contracts";
 import { r2Enabled, r2ImageStorage } from "@/lib/images/r2-storage";
-import { toR2Key, vehiclePhotoObjectKeys } from "@/lib/images/r2-keys";
+import {
+  R2_MAX_OBJECT_BYTES,
+  documentObjectKey,
+  isAcceptedDocumentType,
+  isR2Key,
+  logoObjectKey,
+  toR2Key,
+  vehiclePhotoObjectKeys,
+} from "@/lib/images/r2-keys";
 import {
   canCancelPurchase,
   canCancelReservation,
@@ -20,7 +28,10 @@ import {
 } from "@/lib/calculations/state";
 import { purchaseBalance, saleTotals, validatePayment } from "@/lib/calculations/finance";
 import {
+  accountSchema,
+  documentMetaSchema,
   expenseSchema,
+  papersSchema,
   makePaymentSchema,
   makeSaleSchema,
   purchaseEditSchema,
@@ -29,10 +40,11 @@ import {
   settingsSchema,
   userSchema,
   vehicleEditSchema,
+  voucherSchema,
 } from "@/lib/validation/schemas";
 import { formatReference, formatRegistration, newId, normalizeChassis, normalizeRegistration } from "@/lib/utils/ids";
 import { formatINR } from "@/lib/utils/money";
-import { EXPENSE_CATEGORY_LABELS, ROLE_LABELS, vehicleTitle } from "@/lib/utils/labels";
+import { DOCUMENT_KIND_LABELS, EXPENSE_CATEGORY_LABELS, ROLE_LABELS, VOUCHER_HEAD_LABELS, vehicleTitle } from "@/lib/utils/labels";
 import { INVOICE_TEMPLATES } from "@/types";
 import type {
   ActivityLog,
@@ -40,14 +52,18 @@ import type {
   Customer,
   Expense,
   ID,
+  MoneyAccount,
   Purchase,
   Reservation,
   Sale,
   SalePayment,
   Role,
+  StoredDocument,
   User,
   Vehicle,
   VehicleImage,
+  Voucher,
+  VoucherHead,
 } from "@/types";
 
 type Db = DealerDatabase;
@@ -156,6 +172,11 @@ interface UploadedPhoto {
   thumbKey: string;
 }
 
+function requirePhotoStorage(remote: RemoteImageStorage | null): RemoteImageStorage {
+  if (!remote) throw new BusinessError("Images are stored in Cloudflare R2, and that storage is not configured.");
+  return remote;
+}
+
 /**
  * Uploads photos to remote storage ahead of the IndexedDB transaction, which can't wait on the network.
  * If any upload fails, the ones that made it are deleted again.
@@ -193,16 +214,13 @@ async function storePhotos(
   const images: VehicleImage[] = [];
   const explicitCover = photos.findIndex((p) => p.isCover);
   const coverIndex = explicitCover >= 0 ? explicitCover : 0;
+  if (!uploaded || uploaded.length !== photos.length)
+    throw new BusinessError("Photos must be uploaded to Cloudflare before they can be saved.");
   for (const [i, p] of photos.entries()) {
-    const remote = uploaded?.[i];
-    const id = remote?.id ?? newId();
-    const storageKey = remote?.storageKey ?? `vehicles/${vehicleId}/${id}`;
-    const thumbKey = remote?.thumbKey ?? `${storageKey}/thumb`;
-    if (!remote)
-      await db.imageBlobs.bulkPut([
-        { key: storageKey, blob: p.full, size: p.full.size, mimeType: p.mimeType, createdAt: ts },
-        { key: thumbKey, blob: p.thumb, size: p.thumb.size, mimeType: p.mimeType, createdAt: ts },
-      ]);
+    const remote = uploaded[i];
+    const id = remote.id;
+    const storageKey = remote.storageKey;
+    const thumbKey = remote.thumbKey;
     images.push({
       id,
       vehicleId,
@@ -223,6 +241,27 @@ async function storePhotos(
   return images;
 }
 
+/** Only one default account per kind: the newest default wins. */
+async function keepOneDefault(db: Db, account: MoneyAccount) {
+  if (!account.isDefault) return;
+  const others = await db.accounts.where("kind").equals(account.kind).toArray();
+  await Promise.all(others.filter((a) => a.id !== account.id && a.isDefault).map((a) => db.accounts.update(a.id, { isDefault: false })));
+}
+
+/** What a document is attached to, for activity text and links. */
+async function documentOwner(db: Db, type: StoredDocument["ownerType"], id: ID): Promise<{ vehicleId: ID | null; label: string; href: string }> {
+  if (type === "vehicle") {
+    const v = await getOrThrow(db.vehicles.get(id), "Vehicle");
+    return { vehicleId: v.id, label: `${vehicleTitle(v)} (${v.registrationNumber})`, href: `/inventory/${v.id}` };
+  }
+  if (type === "purchase") {
+    const p = await getOrThrow(db.purchases.get(id), "Purchase");
+    return { vehicleId: p.vehicleId, label: `purchase ${p.reference}`, href: `/purchases/${p.id}` };
+  }
+  const s = await getOrThrow(db.sales.get(id), "Sale");
+  return { vehicleId: s.vehicleId, label: `sale ${s.reference}`, href: `/sales/${s.id}` };
+}
+
 /** Admin accounts always have full access, and a list identical to the defaults is stored as "defaults". */
 function normalizeAccess(role: Role, permissions: readonly Permission[] | null | undefined): Permission[] | null {
   if (role === "admin" || !permissions) return null;
@@ -238,7 +277,7 @@ async function getOrThrow<T>(promise: Promise<T | undefined>, what: string): Pro
   return v;
 }
 
-/** `remote` is where new photos are uploaded; null keeps them in IndexedDB (the default when R2 isn't configured). */
+/** `remote` is Cloudflare R2. New images are never written to the browser. Tests pass null and save no photos. */
 export function createDealerService(
   dbFactory: () => Db = getDb,
   remote: RemoteImageStorage | null = r2Enabled ? r2ImageStorage : null,
@@ -256,7 +295,7 @@ export function createDealerService(
         if (photos.length > max) throw new BusinessError(`A vehicle can have at most ${max} photos.`);
       }
       const vehicleId = newId();
-      const uploaded = remote && photos.length ? await uploadPhotos(remote, vehicleId, photos) : undefined;
+      const uploaded = photos.length ? await uploadPhotos(requirePhotoStorage(remote), vehicleId, photos) : undefined;
       try {
         return await d.transaction(
           "rw",
@@ -360,7 +399,7 @@ export function createDealerService(
       authorize(actor, "purchases.manage");
       const input = parse(purchaseEditSchema, rawInput);
       const d = db();
-      await d.transaction("rw", [d.purchases, d.vehicles, d.activity], async () => {
+      await d.transaction("rw", [d.purchases, d.vehicles, d.vouchers, d.activity], async () => {
         const purchase = await getOrThrow(d.purchases.get(purchaseId), "Purchase");
         if (purchase.status === "cancelled") throw new BusinessError("Cancelled purchases cannot be edited.");
         const vehicle = await d.vehicles.get(purchase.vehicleId);
@@ -372,6 +411,14 @@ export function createDealerService(
           if (!correctionReason || correctionReason.trim().length < 5)
             throw new BusinessError("Provide a correction reason for changing a sold vehicle's purchase figures.");
         }
+        const vouchered = (await d.vouchers.where("purchaseId").equals(purchaseId).toArray())
+          .filter((x) => x.status === "active" && x.head === "seller_payment")
+          .reduce((sum, x) => sum + x.amountPaise, 0);
+        if (input.amountPaidPaise < vouchered)
+          throw new BusinessError(
+            `${formatINR(vouchered)} has already been paid to the seller through payment vouchers. Amount paid cannot be lower.`,
+            "amountPaidPaise",
+          );
         await d.purchases.update(purchaseId, {
           ...input,
           sellerContact: input.sellerContact.replace(/[\s-]/g, ""),
@@ -487,7 +534,7 @@ export function createDealerService(
       const d = db();
       const settings = await d.settings.get("business");
       const max = settings?.maxPhotosPerVehicle ?? 20;
-      const uploaded = remote ? await uploadPhotos(remote, vehicleId, photos) : undefined;
+      const uploaded = await uploadPhotos(requirePhotoStorage(remote), vehicleId, photos);
       try {
         await d.transaction("rw", [d.vehicles, d.vehicleImages, d.imageBlobs, d.activity], async () => {
           const vehicle = await getOrThrow(d.vehicles.get(vehicleId), "Vehicle");
@@ -781,6 +828,8 @@ export function createDealerService(
           notes: input.notes,
           kind: "payment",
           recordedBy: actor.id,
+          accountId: input.accountId ?? null,
+          receivedBy: input.receivedBy ?? actor.id,
           createdAt: ts,
           updatedAt: ts,
         };
@@ -874,6 +923,232 @@ export function createDealerService(
           metadata: { sensitive: true, financial: [{ label: "Amount", before: expense.amountPaise, after: null }] },
         });
       });
+    },
+
+    async updateVehiclePapers(actor, vehicleId, rawInput) {
+      // Office staff keep the papers up to date without being able to edit the car itself.
+      authorize(actor, can(actor, "documents.manage") ? "documents.manage" : "inventory.edit");
+      const input = parse(papersSchema, rawInput);
+      const d = db();
+      await d.transaction("rw", [d.vehicles, d.activity], async () => {
+        const vehicle = await getOrThrow(d.vehicles.get(vehicleId), "Vehicle");
+        const papers = { ...input, financierName: input.hypothecated ? input.financierName : "", nocReceived: input.hypothecated && input.nocReceived };
+        await d.vehicles.update(vehicleId, { papers, updatedAt: now() });
+        const before = vehicle.papers;
+        const changes: { field: string; before?: string; after?: string }[] = [];
+        const track = (field: string, a: string | undefined, b: string) => {
+          if ((a ?? "") !== b) changes.push({ field, before: a || "—", after: b || "—" });
+        };
+        track("Insurance valid till", before?.insuranceValidTill, papers.insuranceValidTill);
+        track("PUC valid till", before?.pucValidTill, papers.pucValidTill);
+        track("RC valid till", before?.rcValidTill, papers.rcValidTill);
+        track("Hypothecation", before ? (before.hypothecated ? before.financierName : "None") : undefined, papers.hypothecated ? papers.financierName : "None");
+        await log(d, actor, {
+          entityType: "vehicle",
+          entityId: vehicleId,
+          action: "vehicle.papers_updated",
+          description: `Updated papers of ${vehicleTitle(vehicle)} (${vehicle.registrationNumber})`,
+          href: `/inventory/${vehicleId}`,
+          metadata: { changes },
+        });
+      });
+    },
+
+    async createAccount(actor, rawInput) {
+      authorize(actor, "accounts.manage");
+      const input = parse(accountSchema, rawInput);
+      const d = db();
+      return d.transaction("rw", [d.accounts, d.users, d.activity], async () => {
+        if (input.custodianId) await getOrThrow(d.users.get(input.custodianId), "Cash holder");
+        const ts = now();
+        const account: MoneyAccount = { id: newId(), ...input, archived: false, createdAt: ts, updatedAt: ts };
+        await d.accounts.add(account);
+        await keepOneDefault(d, account);
+        await log(d, actor, {
+          entityType: "account",
+          entityId: account.id,
+          action: "account.created",
+          description: `Added ${account.kind === "cash" ? "cash account" : "bank account"} ${account.name}`,
+          href: `/accounts?account=${account.id}`,
+        });
+        return account.id;
+      });
+    },
+
+    async updateAccount(actor, accountId, rawInput) {
+      authorize(actor, "accounts.manage");
+      const input = parse(accountSchema, rawInput);
+      const d = db();
+      await d.transaction("rw", [d.accounts, d.users, d.activity], async () => {
+        const account = await getOrThrow(d.accounts.get(accountId), "Account");
+        if (input.kind !== account.kind) throw new BusinessError("An account cannot switch between cash and bank. Add a new one instead.", "kind");
+        if (input.custodianId) await getOrThrow(d.users.get(input.custodianId), "Cash holder");
+        if (input.archived && input.isDefault) throw new BusinessError("Make another account the default before archiving this one.", "archived");
+        const next: MoneyAccount = { ...account, ...input, updatedAt: now() };
+        await d.accounts.put(next);
+        await keepOneDefault(d, next);
+        const others = (await d.accounts.toArray()).filter((a) => a.kind === next.kind && !a.archived);
+        if (!others.some((a) => a.isDefault)) throw new BusinessError(`Keep one ${next.kind} account as the default.`, "isDefault");
+        await log(d, actor, {
+          entityType: "account",
+          entityId: accountId,
+          action: "account.updated",
+          description: `Updated account ${next.name}${input.openingBalancePaise !== account.openingBalancePaise ? ` (opening balance ${formatINR(account.openingBalancePaise)} → ${formatINR(input.openingBalancePaise)})` : ""}`,
+          href: `/accounts?account=${accountId}`,
+        });
+      });
+    },
+
+    async createVoucher(actor, rawInput) {
+      authorize(actor, "accounts.manage");
+      const input = parse(voucherSchema, rawInput);
+      const d = db();
+      return d.transaction("rw", [d.vouchers, d.accounts, d.purchases, d.sales, d.users, d.counters, d.activity], async () => {
+        const from = await getOrThrow(d.accounts.get(input.accountId), "Account");
+        if (from.archived) throw new BusinessError(`${from.name} is archived. Pick an active account.`, "accountId");
+        if (input.toAccountId) {
+          const to = await getOrThrow(d.accounts.get(input.toAccountId), "Account");
+          if (to.archived) throw new BusinessError(`${to.name} is archived. Pick an active account.`, "toAccountId");
+        }
+        await getOrThrow(d.users.get(input.handledBy), "Staff member");
+        const ts = now();
+        let purchase: Purchase | undefined;
+        if (input.head === "seller_payment" && input.purchaseId) {
+          purchase = await getOrThrow(d.purchases.get(input.purchaseId), "Purchase");
+          if (purchase.status !== "active") throw new BusinessError("This purchase was cancelled.", "purchaseId");
+          const balance = purchaseBalance(purchase);
+          if (input.amountPaise > balance)
+            throw new BusinessError(`Only ${formatINR(balance)} is still owed to ${purchase.sellerName}.`, "amountPaise");
+          await d.purchases.update(purchase.id, { amountPaidPaise: purchase.amountPaidPaise + input.amountPaise, updatedAt: ts });
+        }
+        if (input.saleId) await getOrThrow(d.sales.get(input.saleId), "Sale");
+        const prefix = input.type === "receipt" ? "RV" : input.type === "payment" ? "PV" : "CV";
+        const voucher: Voucher = {
+          id: newId(),
+          number: await nextReference(d, prefix),
+          type: input.type,
+          head: input.head as VoucherHead,
+          date: input.date,
+          amountPaise: input.amountPaise,
+          method: input.method,
+          accountId: input.accountId,
+          toAccountId: input.type === "contra" ? input.toAccountId : null,
+          partyName: purchase ? purchase.sellerName : input.partyName,
+          partyPhone: purchase ? purchase.sellerContact : input.partyPhone.replace(/[\s-]/g, ""),
+          reference: input.reference,
+          narration: input.narration,
+          purchaseId: purchase?.id ?? null,
+          saleId: input.saleId,
+          handledBy: input.handledBy,
+          status: "active",
+          createdBy: actor.id,
+          cancelledAt: null,
+          cancelReason: "",
+          createdAt: ts,
+          updatedAt: ts,
+        };
+        await d.vouchers.add(voucher);
+        const what = VOUCHER_HEAD_LABELS[voucher.head].toLowerCase();
+        await log(d, actor, {
+          entityType: "voucher",
+          entityId: voucher.id,
+          action: "voucher.created",
+          description:
+            voucher.type === "contra"
+              ? `Moved ${formatINR(voucher.amountPaise)} between accounts (${voucher.number})`
+              : `${voucher.type === "receipt" ? "Received" : "Paid"} ${formatINR(voucher.amountPaise)} ${voucher.type === "receipt" ? "from" : "to"} ${voucher.partyName} — ${what} (${voucher.number})`,
+          href: `/voucher/${voucher.id}`,
+          metadata: purchase ? { sensitive: true, financial: [{ label: "Seller balance", before: purchaseBalance(purchase), after: purchaseBalance(purchase) - voucher.amountPaise }] } : undefined,
+        });
+        return voucher.id;
+      });
+    },
+
+    async cancelVoucher(actor, voucherId, reason) {
+      authorize(actor, "accounts.manage");
+      if (reason.trim().length < 5) throw new BusinessError("Please give a reason (at least 5 characters).", "reason");
+      const d = db();
+      await d.transaction("rw", [d.vouchers, d.purchases, d.activity], async () => {
+        const voucher = await getOrThrow(d.vouchers.get(voucherId), "Voucher");
+        if (voucher.status === "cancelled") throw new BusinessError("This voucher is already cancelled.");
+        const ts = now();
+        if (voucher.head === "seller_payment" && voucher.purchaseId) {
+          const purchase = await d.purchases.get(voucher.purchaseId);
+          if (purchase)
+            await d.purchases.update(purchase.id, { amountPaidPaise: Math.max(0, purchase.amountPaidPaise - voucher.amountPaise), updatedAt: ts });
+        }
+        await d.vouchers.update(voucherId, { status: "cancelled", cancelledAt: ts, cancelReason: reason.trim(), updatedAt: ts });
+        await log(d, actor, {
+          entityType: "voucher",
+          entityId: voucherId,
+          action: "voucher.cancelled",
+          description: `Cancelled voucher ${voucher.number} (${formatINR(voucher.amountPaise)})`,
+          href: `/voucher/${voucherId}`,
+          metadata: { changes: [{ field: "Reason", after: reason.trim() }] },
+        });
+      });
+    },
+
+    async uploadDocument(actor, rawMeta, file, fileName) {
+      authorize(actor, "documents.manage");
+      const meta = parse(documentMetaSchema, rawMeta);
+      if (!isAcceptedDocumentType(file.type)) throw new BusinessError("Upload a PDF, JPEG, PNG or WebP file.");
+      if (file.size > R2_MAX_OBJECT_BYTES) throw new BusinessError(`Files must be under ${R2_MAX_OBJECT_BYTES / 1024 / 1024} MB.`);
+      const d = db();
+      const owner = await documentOwner(d, meta.ownerType, meta.ownerId);
+      const id = newId();
+      const storageKey = await requirePhotoStorage(remote).put(documentObjectKey(meta.ownerId, id, file.type), file);
+      try {
+        return await d.transaction("rw", [d.documents, d.activity], async () => {
+          const ts = now();
+          const doc: StoredDocument = {
+            id,
+            ownerType: meta.ownerType,
+            ownerId: meta.ownerId,
+            vehicleId: owner.vehicleId,
+            kind: meta.kind,
+            title: meta.title || DOCUMENT_KIND_LABELS[meta.kind],
+            fileName: fileName.slice(0, 120),
+            storageKey,
+            mimeType: file.type,
+            size: file.size,
+            uploadedBy: actor.id,
+            createdAt: ts,
+            updatedAt: ts,
+          };
+          await d.documents.add(doc);
+          await log(d, actor, {
+            entityType: "document",
+            entityId: id,
+            action: "document.uploaded",
+            description: `Uploaded ${doc.title.toLowerCase()} for ${owner.label}`,
+            href: owner.href,
+          });
+          return id;
+        });
+      } catch (error) {
+        await remote?.remove([storageKey]).catch((e) => console.error("Could not clean up uploaded document", e));
+        throw error;
+      }
+    },
+
+    async removeDocument(actor, documentId) {
+      authorize(actor, "documents.manage");
+      const d = db();
+      const removed = await d.transaction("rw", [d.documents, d.vehicles, d.purchases, d.sales, d.activity], async () => {
+        const doc = await getOrThrow(d.documents.get(documentId), "Document");
+        const owner = await documentOwner(d, doc.ownerType, doc.ownerId).catch(() => ({ label: "a deleted record", href: null }));
+        await d.documents.delete(documentId);
+        await log(d, actor, {
+          entityType: "document",
+          entityId: documentId,
+          action: "document.removed",
+          description: `Removed ${doc.title.toLowerCase()} (${doc.fileName}) from ${owner.label}`,
+          href: owner.href,
+        });
+        return doc;
+      });
+      if (remote) await remote.remove([removed.storageKey]).catch((e) => console.error("Could not delete document from R2", e));
     },
 
     async createUser(actor, rawInput) {
@@ -1016,23 +1291,28 @@ export function createDealerService(
     async setLogo(actor, logo) {
       authorize(actor, "settings.manage");
       const d = db();
-      await d.transaction("rw", [d.settings, d.imageBlobs, d.activity], async () => {
-        const current = await getOrThrow(d.settings.get("business"), "Settings");
-        if (current.logoKey) await d.imageBlobs.delete(current.logoKey);
-        let logoKey: string | null = null;
-        if (logo) {
-          logoKey = `branding/logo-${newId()}`;
-          await d.imageBlobs.put({ key: logoKey, blob: logo, size: logo.size, mimeType: logo.type, createdAt: now() });
-        }
-        await d.settings.put({ ...current, logoKey, updatedAt: now() });
-        await log(d, actor, {
-          entityType: "settings",
-          entityId: "business",
-          action: "settings.updated",
-          description: logo ? "Updated showroom logo" : "Removed showroom logo",
-          href: "/settings",
+      const before = await getOrThrow(d.settings.get("business"), "Settings");
+      let uploadedKey: string | null = null;
+      if (logo) uploadedKey = await requirePhotoStorage(remote).put(logoObjectKey(newId()), logo);
+      try {
+        await d.transaction("rw", [d.settings, d.imageBlobs, d.activity], async () => {
+          const current = await getOrThrow(d.settings.get("business"), "Settings");
+          if (current.logoKey && !isR2Key(current.logoKey)) await d.imageBlobs.delete(current.logoKey);
+          await d.settings.put({ ...current, logoKey: uploadedKey, updatedAt: now() });
+          await log(d, actor, {
+            entityType: "settings",
+            entityId: "business",
+            action: "settings.updated",
+            description: logo ? "Updated showroom logo" : "Removed showroom logo",
+            href: "/settings",
+          });
         });
-      });
+      } catch (error) {
+        if (uploadedKey) await remote?.remove([uploadedKey]).catch((e) => console.error("Could not clean up uploaded logo", e));
+        throw error;
+      }
+      if (before.logoKey && isR2Key(before.logoKey) && before.logoKey !== uploadedKey)
+        await remote?.remove([before.logoKey]).catch((e) => console.error("Could not delete the previous logo from R2", e));
     },
   };
 }

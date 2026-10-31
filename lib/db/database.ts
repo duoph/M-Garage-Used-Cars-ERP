@@ -6,13 +6,16 @@ import type {
   Customer,
   Expense,
   ImageBlobRecord,
+  MoneyAccount,
   Purchase,
   Reservation,
   Sale,
   SalePayment,
+  StoredDocument,
   User,
   Vehicle,
   VehicleImage,
+  Voucher,
 } from "@/types";
 
 /**
@@ -31,6 +34,9 @@ export class DealerDatabase extends Dexie {
   sales!: EntityTable<Sale, "id">;
   salePayments!: EntityTable<SalePayment, "id">;
   expenses!: EntityTable<Expense, "id">;
+  accounts!: EntityTable<MoneyAccount, "id">;
+  vouchers!: EntityTable<Voucher, "id">;
+  documents!: EntityTable<StoredDocument, "id">;
   activity!: EntityTable<ActivityLog, "id">;
   settings!: EntityTable<BusinessSettings, "id">;
   counters!: EntityTable<Counter, "key">;
@@ -57,6 +63,11 @@ export class DealerDatabase extends Dexie {
     this.version(2).stores({ quotes: "id, vehicleId, status, quoteDate, reference" });
     // Quotes were removed from the app; v3 drops the table and its data.
     this.version(3).stores({ quotes: null });
+    this.version(4).stores({
+      accounts: "id, kind",
+      vouchers: "id, type, date, accountId, toAccountId, purchaseId, saleId, status, number",
+      documents: "id, [ownerType+ownerId], vehicleId, kind",
+    });
   }
 }
 
@@ -82,6 +93,9 @@ export const DATA_TABLES = [
   "sales",
   "salePayments",
   "expenses",
+  "accounts",
+  "vouchers",
+  "documents",
   "activity",
   "settings",
   "counters",

@@ -19,6 +19,7 @@ import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, Dia
 import { Field } from "@/components/shared/form-field";
 import { CurrencyInput } from "@/components/shared/currency-input";
 import { DateField } from "@/components/shared/date-field";
+import { AccountSelect, StaffSelect, useDefaultAccountId } from "@/features/accounts/shared";
 
 export function PaymentDialog({
   sale,
@@ -45,10 +46,12 @@ function PaymentForm({ sale, balancePaise, onDone, onRecorded }: { sale: Sale; b
   const { can } = useAuth();
   const form = useForm<PaymentInput>({
     resolver: zodResolver(makePaymentSchema(balancePaise)),
-    defaultValues: { amountPaise: balancePaise, date: todayISO(), method: "bank_transfer", reference: "", notes: "" },
+    defaultValues: { amountPaise: balancePaise, date: todayISO(), method: "bank_transfer", reference: "", notes: "", accountId: null, receivedBy: user.id },
   });
   const { errors, isSubmitting } = form.formState;
   const amount = useWatch({ control: form.control, name: "amountPaise" }) ?? 0;
+  const method = useWatch({ control: form.control, name: "method" });
+  const defaultAccount = useDefaultAccountId(method);
 
   async function onSubmit(values: PaymentInput) {
     try {
@@ -92,10 +95,20 @@ function PaymentForm({ sale, balancePaise, onDone, onRecorded }: { sale: Sale; b
           </Field>
           <Field label="Payment method" htmlFor="pay-method">
             <Controller control={form.control} name="method" render={({ field }) => (
-              <Select value={field.value} onValueChange={field.onChange}>
+              <Select value={field.value} onValueChange={(v) => { field.onChange(v); form.setValue("accountId", null); }}>
                 <SelectTrigger id="pay-method"><SelectValue /></SelectTrigger>
                 <SelectContent>{PAYMENT_METHODS.map((m) => <SelectItem key={m} value={m}>{PAYMENT_METHOD_LABELS[m]}</SelectItem>)}</SelectContent>
               </Select>
+            )} />
+          </Field>
+          <Field label="Deposit into" htmlFor="pay-account">
+            <Controller control={form.control} name="accountId" render={({ field }) => (
+              <AccountSelect id="pay-account" value={field.value ?? defaultAccount} onChange={field.onChange} />
+            )} />
+          </Field>
+          <Field label={method === "cash" ? "Cash received by" : "Received by"} htmlFor="pay-received-by">
+            <Controller control={form.control} name="receivedBy" render={({ field }) => (
+              <StaffSelect id="pay-received-by" value={field.value} onChange={field.onChange} />
             )} />
           </Field>
           <Field label="Payment reference" htmlFor="pay-ref" error={errors.reference?.message} className="sm:col-span-2">

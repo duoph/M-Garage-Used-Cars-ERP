@@ -27,7 +27,7 @@ async function snapshot(): Promise<Dataset> {
     db.users.toArray(), db.vehicles.toArray(), db.purchases.toArray(), db.vehicleImages.toArray(), db.customers.toArray(),
     db.reservations.toArray(), db.sales.toArray(), db.salePayments.toArray(), db.expenses.toArray(), db.activity.toArray(), db.settings.get("business"),
   ]);
-  return { users, vehicles, purchases, images, customers, reservations, sales: salesRows, payments, expenses, activity, settings: settings! };
+  return { users, vehicles, purchases, images, customers, reservations, sales: salesRows, payments, expenses, accounts: [], vouchers: [], documents: [], activity, settings: settings! };
 }
 
 beforeEach(async () => {

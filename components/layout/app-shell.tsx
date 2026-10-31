@@ -11,6 +11,7 @@ import { Dialog as P } from "radix-ui";
 import { AccessDenied } from "@/components/shared/access-denied";
 import { BootScreen } from "@/components/shared/boot-screen";
 import { ExpenseDialogHost } from "@/features/expenses/expense-dialog";
+import { VoucherDialogHost } from "@/features/accounts/voucher-dialog";
 import { Sidebar, SidebarNav } from "./sidebar";
 import { Topbar } from "./topbar";
 import { GlobalSearch } from "./global-search";
@@ -57,6 +58,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </div>
       <GlobalSearch />
       <ExpenseDialogHost />
+      <VoucherDialogHost />
     </div>
   );
 }

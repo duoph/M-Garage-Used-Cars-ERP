@@ -1,5 +1,10 @@
 import type {
+  AccountKind,
+  DocumentKind,
   ExpenseCategory,
+  InsuranceType,
+  VoucherHead,
+  VoucherType,
   FuelType,
   PaymentMethod,
   PaymentStatus,
@@ -14,6 +19,7 @@ import type {
 export const ROLE_LABELS: Record<Role, string> = {
   admin: "Admin account",
   manager: "Manager account",
+  office: "Office Admin account",
   sales: "Sales account",
   accountant: "Accountant account",
 };
@@ -81,6 +87,56 @@ export const EXPENSE_CATEGORY_LABELS: Record<ExpenseCategory, string> = {
   office: "Office expenses",
   maintenance: "Maintenance",
   general_misc: "Miscellaneous",
+};
+
+export const ACCOUNT_KIND_LABELS: Record<AccountKind, string> = {
+  cash: "Cash in hand",
+  bank: "Bank account",
+};
+
+export const VOUCHER_TYPE_LABELS: Record<VoucherType, string> = {
+  receipt: "Receipt voucher",
+  payment: "Payment voucher",
+  contra: "Contra voucher",
+};
+
+export const VOUCHER_HEAD_LABELS: Record<VoucherHead, string> = {
+  other_income: "Other income",
+  commission_received: "Commission received",
+  service_charges: "Service / RTO charges collected",
+  capital_introduced: "Capital introduced",
+  loan_received: "Loan received",
+  refund_from_seller: "Refund from seller",
+  misc_receipt: "Miscellaneous receipt",
+  seller_payment: "Payment to seller",
+  refund_to_buyer: "Refund to buyer",
+  commission_paid: "Commission / brokerage paid",
+  staff_advance: "Staff advance",
+  owner_drawings: "Owner drawings",
+  loan_repayment: "Loan repayment",
+  misc_payment: "Miscellaneous payment",
+  transfer: "Transfer between accounts",
+};
+
+export const INSURANCE_TYPE_LABELS: Record<InsuranceType, string> = {
+  comprehensive: "Comprehensive",
+  third_party: "Third party",
+  zero_dep: "Zero depreciation",
+  none: "Not insured",
+};
+
+export const DOCUMENT_KIND_LABELS: Record<DocumentKind, string> = {
+  id_proof: "ID proof",
+  address_proof: "Address proof",
+  pan_card: "PAN card",
+  sale_letter: "Sale letter",
+  delivery_note: "Delivery note",
+  rc: "RC book / card",
+  insurance: "Insurance policy",
+  puc: "Pollution (PUC)",
+  noc: "Bank NOC",
+  form_29_30: "Form 29 / 30",
+  other: "Other",
 };
 
 export function vehicleTitle(v: { make: string; model: string }): string {

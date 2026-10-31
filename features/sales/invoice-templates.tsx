@@ -141,7 +141,7 @@ function ModernInvoice({ number, sale, vehicle, customer, payments, paidPaise, b
     <>
       <header className={cn("-mx-6 -mt-8 flex flex-wrap items-end justify-between gap-6 bg-primary px-6 py-8 text-primary-foreground sm:-mx-14 sm:-mt-14 sm:px-14", keepColour, "print:mx-0 print:mt-0 print:rounded-md print:px-8")}>
         <div className="flex items-center gap-4">
-          {s.logoKey && <ShowroomLogo className="size-14 rounded-md bg-white p-1" />}
+          <ShowroomLogo className="size-14 rounded-md bg-white p-1" />
           <div>
             <h1 className="text-lg font-semibold">{s.showroomName}</h1>
             {(s.address || s.city) && <p className="text-xs opacity-80">{[s.address, s.city].filter(Boolean).join(", ")}</p>}
@@ -235,7 +235,7 @@ function CompactInvoice({ number, sale, vehicle, customer, payments, balancePais
     <div className="text-[12px] leading-snug">
       <header className="flex items-start justify-between gap-4 border-b-2 border-[#111827] pb-3">
         <div className="flex items-center gap-3">
-          {s.logoKey && <ShowroomLogo className="size-10" />}
+          <ShowroomLogo className="size-10" />
           <div>
             <h1 className="text-sm font-bold">{s.showroomName}</h1>
             <p className="text-[11px] text-[#4b5563]">
@@ -318,7 +318,7 @@ function BoldInvoice({ number, sale, vehicle, customer, payments, paidPaise, bal
               {[[s.address, s.city].filter(Boolean).join(", "), contactLine(s), s.gstin && `GSTIN ${s.gstin}`].filter(Boolean).join("\n")}
             </p>
           </div>
-          {s.logoKey && <ShowroomLogo className="size-14" />}
+          <ShowroomLogo className="size-14" />
         </div>
       </header>
 

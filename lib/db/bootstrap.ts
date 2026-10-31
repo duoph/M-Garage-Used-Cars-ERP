@@ -1,5 +1,5 @@
 import type { DealerDatabase } from "@/lib/db/database";
-import type { BusinessSettings, User } from "@/types";
+import type { BusinessSettings, MoneyAccount, User } from "@/types";
 
 /** The first account in a new showroom. Rename it and add staff from the Staff page. */
 export const OWNER_USER_ID = "u-owner";
@@ -42,6 +42,20 @@ function ownerUser(): User {
   return { id: OWNER_USER_ID, name: "Owner", email: "", phone: "", role: "admin", status: "active", createdAt: ts, updatedAt: ts };
 }
 
+/** Every showroom starts with a cash drawer and a bank account, so money always has somewhere to land. */
+export function defaultAccounts(): MoneyAccount[] {
+  const ts = new Date().toISOString();
+  const base = { bankName: "", accountNumber: "", ifsc: "", upiId: "", custodianId: null, openingBalancePaise: 0, openingDate: ts.slice(0, 10), isDefault: true, archived: false, notes: "", createdAt: ts, updatedAt: ts };
+  return [
+    { ...base, id: "acc-cash", name: "Cash in hand", kind: "cash" },
+    { ...base, id: "acc-bank", name: "Main bank account", kind: "bank" },
+  ];
+}
+
+async function ensureDefaultAccounts(db: DealerDatabase): Promise<void> {
+  if ((await db.accounts.count()) === 0) await db.accounts.bulkAdd(defaultAccounts());
+}
+
 /** Records that this database holds real showroom data, so the fresh-start wipe never runs on it. */
 export async function markInitialized(db: DealerDatabase): Promise<void> {
   await db.meta.put({ key: "freshStart", value: FRESH_START_VERSION });
@@ -69,6 +83,7 @@ export async function ensureInitialized(db: DealerDatabase): Promise<void> {
   const marker = await db.meta.get("freshStart");
   if (marker?.value === FRESH_START_VERSION) {
     await applyShowroomBrand(db);
+    await ensureDefaultAccounts(db);
     return;
   }
   await db.transaction("rw", db.tables, async () => {
@@ -80,6 +95,7 @@ export async function ensureInitialized(db: DealerDatabase): Promise<void> {
       await db.settings.put({ ...defaultSettings(), logoKey: settings?.logoKey ?? null });
     if (logo) await db.imageBlobs.put(logo);
     await db.users.add(ownerUser());
+    await ensureDefaultAccounts(db);
     await applyShowroomBrand(db);
     await markInitialized(db);
   });

@@ -33,11 +33,11 @@ import { VehicleDetailsFields } from "@/features/inventory/vehicle-fields";
 import { MultiImageUploader, toPreparedPhotos, type PendingPhoto } from "@/features/inventory/photos/multi-image-uploader";
 
 const STEPS = [
-  { key: "vehicle", label: "Vehicle details" },
-  { key: "seller", label: "Seller" },
-  { key: "purchase", label: "Purchase" },
-  { key: "photos", label: "Photos" },
-  { key: "review", label: "Review & save" },
+  { key: "vehicle", label: "Vehicle details", short: "Car", hint: "Make, registration, kilometres and colour." },
+  { key: "seller", label: "Seller", short: "Seller", hint: "Who sold this car to the showroom." },
+  { key: "purchase", label: "Purchase", short: "Payment", hint: "The agreed price, and how much you have already paid the seller." },
+  { key: "photos", label: "Photos", short: "Photos", hint: "Optional. You can add pictures later from the vehicle page." },
+  { key: "review", label: "Review & save", short: "Review", hint: "Check everything, then add the car to stock." },
 ] as const;
 
 const STEP_FIELDS: FieldPath<PurchaseFormInput>[][] = [
@@ -145,9 +145,42 @@ export function NewPurchasePage() {
       />
 
       <nav aria-label="Progress" className="mb-4">
-        <ol className="flex gap-1 overflow-x-auto [scrollbar-width:none]">
+        <div className="sm:hidden">
+          <p className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
+            Step {step + 1} of {STEPS.length}
+          </p>
+          <p className="mt-1 text-lg font-semibold tracking-tight">{STEPS[step].label}</p>
+          <p className="mt-0.5 text-[13px] leading-relaxed text-muted-foreground">{STEPS[step].hint}</p>
+          <ol className="mt-3 grid grid-cols-5 gap-1">
+            {STEPS.map((s, i) => (
+              <li key={s.key}>
+                <button
+                  type="button"
+                  onClick={() => i < step && goTo(i)}
+                  disabled={i > step}
+                  aria-current={i === step ? "step" : undefined}
+                  aria-label={`Step ${i + 1}: ${s.label}`}
+                  className="flex w-full flex-col items-center gap-1.5 disabled:cursor-default"
+                >
+                  <span
+                    className={cn(
+                      "flex size-8 items-center justify-center rounded-full text-xs font-semibold",
+                      i < step && "bg-primary text-primary-foreground",
+                      i === step && "bg-primary text-primary-foreground ring-4 ring-primary/15",
+                      i > step && "border border-border bg-card text-muted-foreground",
+                    )}
+                  >
+                    {i < step ? <Check className="size-3.5" /> : i + 1}
+                  </span>
+                  <span className={cn("text-[11px] leading-none", i === step ? "font-semibold text-foreground" : "text-muted-foreground")}>{s.short}</span>
+                </button>
+              </li>
+            ))}
+          </ol>
+        </div>
+        <ol className="hidden grid-cols-5 gap-3 sm:grid">
           {STEPS.map((s, i) => (
-            <li key={s.key} className="min-w-28 flex-1">
+            <li key={s.key}>
               <button
                 type="button"
                 onClick={() => i < step && goTo(i)}
@@ -155,17 +188,19 @@ export function NewPurchasePage() {
                 aria-current={i === step ? "step" : undefined}
                 className="group w-full text-left disabled:cursor-default"
               >
-                <div className={cn("h-1 rounded-full", i <= step ? "bg-primary" : "bg-[#e4e7ec]")} />
-                <div className="mt-2 flex items-center gap-1.5 text-xs">
+                <div className={cn("h-1 rounded-full", i <= step ? "bg-primary" : "bg-muted")} />
+                <div className="mt-2 flex items-start gap-2">
                   <span
                     className={cn(
-                      "flex size-5 items-center justify-center rounded-full text-[10px] font-semibold",
-                      i < step ? "bg-primary text-white" : i === step ? "border-2 border-primary text-primary" : "border text-muted-foreground",
+                      "mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold",
+                      i < step ? "bg-primary text-primary-foreground" : i === step ? "border-2 border-primary text-primary" : "border text-muted-foreground",
                     )}
                   >
                     {i < step ? <Check className="size-3" /> : i + 1}
                   </span>
-                  <span className={cn("font-medium", i === step ? "text-foreground" : "text-muted-foreground", i < step && "group-hover:text-foreground")}>{s.label}</span>
+                  <span className={cn("text-[13px] leading-tight font-medium", i === step ? "text-foreground" : "text-muted-foreground", i < step && "group-hover:text-foreground")}>
+                    {s.label}
+                  </span>
                 </div>
               </button>
             </li>
@@ -234,10 +269,12 @@ export function NewPurchasePage() {
           )}
           {step === 3 && (
             <div>
-              <h2 className="text-sm font-semibold">Vehicle photos</h2>
-              <p className="mt-1 mb-4 text-[13px] text-muted-foreground">
-                Optional — you can add photos later from the vehicle page. Set a cover and drag to reorder.
-              </p>
+              <div className="mb-4 hidden sm:block">
+                <h2 className="text-sm font-semibold">Vehicle photos</h2>
+                <p className="mt-1 text-[13px] text-muted-foreground">
+                  Optional — you can add photos later from the vehicle page. Set a cover and drag to reorder.
+                </p>
+              </div>
               <MultiImageUploader value={photos} onChange={setPhotos} />
             </div>
           )}
@@ -275,8 +312,10 @@ export function NewPurchasePage() {
 function StepBody({ title, description, children }: { title: string; description: string; children: React.ReactNode }) {
   return (
     <div>
-      <h2 className="text-sm font-semibold">{title}</h2>
-      <p className="mt-1 mb-4 text-[13px] text-muted-foreground">{description}</p>
+      <div className="mb-4 hidden sm:block">
+        <h2 className="text-sm font-semibold">{title}</h2>
+        <p className="mt-1 text-[13px] text-muted-foreground">{description}</p>
+      </div>
       <div className="grid gap-4 sm:grid-cols-2">{children}</div>
     </div>
   );
@@ -304,7 +343,7 @@ function ReviewSection({ title, step, rows, onEdit }: { title: string; step: num
 function Review({ values: v, photos, onEdit, status }: { values: PurchaseFormInput; photos: PendingPhoto[]; onEdit: (s: number) => void; status: ReturnType<typeof paymentStatusFor> }) {
   return (
     <div className="grid gap-4">
-      <div>
+      <div className="hidden sm:block">
         <h2 className="text-sm font-semibold">Review & save</h2>
         <p className="mt-1 text-[13px] text-muted-foreground">Check the details below. Saving creates the purchase record and an Available inventory vehicle.</p>
       </div>

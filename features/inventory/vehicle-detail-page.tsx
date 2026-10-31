@@ -24,6 +24,8 @@ import { VehiclePhotoGallery } from "./photos/vehicle-photo-gallery";
 import { useVehicleActions } from "./vehicle-actions";
 import { VehicleLifecycle } from "./lifecycle";
 import { GLOSSARY, InfoTip } from "@/components/shared/info-tip";
+import { DocumentsCard } from "@/features/documents/documents-card";
+import { PapersCard } from "./papers-card";
 
 export function VehicleDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -177,6 +179,8 @@ function VehicleDetail({ view }: { view: VehicleView }) {
               </CardContent>
             </Card>
           )}
+
+          <PapersCard vehicle={v} />
         </div>
       </div>
 
@@ -253,6 +257,15 @@ function VehicleDetail({ view }: { view: VehicleView }) {
                 </Card>
               )}
             </RoleGuard>
+            <DocumentsCard
+              ownerType="vehicle"
+              ownerId={v.id}
+              includeVehicleId={v.id}
+              title="Car papers"
+              description="RC, insurance, PUC, NOC and every ID proof or sale letter on this car's purchase and sale."
+              checklist={["rc", "insurance", "puc", ...(v.papers?.hypothecated ? (["noc"] as const) : [])]}
+              className="lg:col-span-2"
+            />
           </div>
         </TabsContent>
 

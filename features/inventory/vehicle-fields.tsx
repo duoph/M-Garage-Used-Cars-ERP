@@ -5,6 +5,7 @@ import { FUEL_TYPES, TRANSMISSIONS } from "@/types";
 import { FUEL_LABELS, TRANSMISSION_LABELS } from "@/lib/utils/labels";
 import type { VehicleDetailsInput } from "@/lib/validation/schemas";
 import { Field } from "@/components/shared/form-field";
+import { SuggestInput } from "@/components/shared/suggest-input";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -36,10 +37,22 @@ export function VehicleDetailsFields<T extends FieldValues & VehicleDetailsInput
   return (
     <>
       <Field label="Make" htmlFor={id("make")} error={e.make?.message} required>
-        <Input id={id("make")} list={id("makes")} placeholder="e.g. Hyundai" autoComplete="off" aria-invalid={!!e.make} {...register("make")} />
-        <datalist id={id("makes")}>
-          {COMMON_MAKES.map((m) => <option key={m} value={m} />)}
-        </datalist>
+        <Controller
+          control={control}
+          name="make"
+          render={({ field }) => (
+            <SuggestInput
+              id={id("make")}
+              name={field.name}
+              value={field.value ?? ""}
+              onChange={field.onChange}
+              onBlur={field.onBlur}
+              options={COMMON_MAKES}
+              placeholder="e.g. Hyundai"
+              invalid={!!e.make}
+            />
+          )}
+        />
       </Field>
       <Field label="Model" htmlFor={id("model")} error={e.model?.message} required>
         <Input id={id("model")} placeholder="e.g. Creta" autoComplete="off" aria-invalid={!!e.model} {...register("model")} />
@@ -109,10 +122,22 @@ export function VehicleDetailsFields<T extends FieldValues & VehicleDetailsInput
         />
       </Field>
       <Field label="Exterior colour" htmlFor={id("color")} error={e.color?.message} required>
-        <Input id={id("color")} list={id("colors")} autoComplete="off" aria-invalid={!!e.color} {...register("color")} />
-        <datalist id={id("colors")}>
-          {COMMON_COLORS.map((m) => <option key={m} value={m} />)}
-        </datalist>
+        <Controller
+          control={control}
+          name="color"
+          render={({ field }) => (
+            <SuggestInput
+              id={id("color")}
+              name={field.name}
+              value={field.value ?? ""}
+              onChange={field.onChange}
+              onBlur={field.onBlur}
+              options={COMMON_COLORS}
+              placeholder="e.g. White"
+              invalid={!!e.color}
+            />
+          )}
+        />
       </Field>
       <Field label="Previous owners" htmlFor={id("owners")} error={e.previousOwners?.message} required>
         <Input

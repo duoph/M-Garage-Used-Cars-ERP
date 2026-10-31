@@ -1,8 +1,8 @@
 import { z } from "zod";
 import type { DealerDatabase } from "@/lib/db/database";
-import { markInitialized } from "@/lib/db/bootstrap";
+import { defaultAccounts, markInitialized } from "@/lib/db/bootstrap";
 import { newId } from "@/lib/utils/ids";
-import type { User } from "@/types";
+import { ROLES, type User } from "@/types";
 
 /**
  * Local backup / restore for browser-stored data. Images travel as data URLs inside the JSON file.
@@ -17,7 +17,7 @@ const backupSchema = z.object({
   version: z.literal(BACKUP_VERSION),
   exportedAt: z.string(),
   tables: z.object({
-    users: z.array(row.extend({ name: z.string(), role: z.enum(["admin", "manager", "sales", "accountant"]), status: z.string() })).min(1),
+    users: z.array(row.extend({ name: z.string(), role: z.enum(ROLES), status: z.string() })).min(1),
     vehicles: z.array(row.extend({ registrationNumber: z.string(), status: z.enum(["available", "reserved", "sold"]), askingPricePaise: z.number().int() })),
     purchases: z.array(row.extend({ vehicleId: z.string(), purchasePricePaise: z.number().int(), amountPaidPaise: z.number().int() })),
     vehicleImages: z.array(row.extend({ vehicleId: z.string(), storageKey: z.string(), thumbKey: z.string() })),
@@ -27,6 +27,10 @@ const backupSchema = z.object({
     salePayments: z.array(row.extend({ saleId: z.string(), amountPaise: z.number().int() })),
     // Older backups may still carry a "quotes" table; it is ignored (quotes were removed).
     expenses: z.array(row.extend({ amountPaise: z.number().int(), category: z.string() })),
+    // Added with accounting; older backups have none and get the default accounts.
+    accounts: z.array(row.extend({ name: z.string(), kind: z.enum(["cash", "bank"]) })).optional(),
+    vouchers: z.array(row.extend({ accountId: z.string(), amountPaise: z.number().int() })).optional(),
+    documents: z.array(row.extend({ storageKey: z.string() })).optional(),
     activity: z.array(row),
     settings: z.array(row).length(1),
     counters: z.array(z.object({ key: z.string(), value: z.number().int() })),
@@ -48,11 +52,11 @@ async function dataUrlToBlob(dataUrl: string): Promise<Blob> {
 }
 
 export async function exportBackup(db: DealerDatabase): Promise<string> {
-  const [users, vehicles, purchases, vehicleImages, customers, reservations, sales, salePayments, expenses, activity, settings, counters, blobRows] =
+  const [users, vehicles, purchases, vehicleImages, customers, reservations, sales, salePayments, expenses, accounts, vouchers, documents, activity, settings, counters, blobRows] =
     await Promise.all([
       db.users.toArray(), db.vehicles.toArray(), db.purchases.toArray(), db.vehicleImages.toArray(), db.customers.toArray(),
-      db.reservations.toArray(), db.sales.toArray(), db.salePayments.toArray(), db.expenses.toArray(), db.activity.toArray(),
-      db.settings.toArray(), db.counters.toArray(), db.imageBlobs.toArray(),
+      db.reservations.toArray(), db.sales.toArray(), db.salePayments.toArray(), db.expenses.toArray(), db.accounts.toArray(),
+      db.vouchers.toArray(), db.documents.toArray(), db.activity.toArray(), db.settings.toArray(), db.counters.toArray(), db.imageBlobs.toArray(),
     ]);
   const blobs = await Promise.all(
     blobRows.map(async (b) => ({ key: b.key, mimeType: b.mimeType, dataUrl: await blobToDataUrl(b.blob) })),
@@ -61,7 +65,7 @@ export async function exportBackup(db: DealerDatabase): Promise<string> {
     app: "dealeros",
     version: BACKUP_VERSION,
     exportedAt: new Date().toISOString(),
-    tables: { users, vehicles, purchases, vehicleImages, customers, reservations, sales, salePayments, expenses, activity, settings, counters },
+    tables: { users, vehicles, purchases, vehicleImages, customers, reservations, sales, salePayments, expenses, accounts, vouchers, documents, activity, settings, counters },
     blobs,
   });
 }
@@ -111,6 +115,9 @@ export async function importBackup(db: DealerDatabase, json: string, actor: User
     await db.sales.bulkAdd(tables.sales as any);
     await db.salePayments.bulkAdd(tables.salePayments as any);
     await db.expenses.bulkAdd(tables.expenses as any);
+    await db.accounts.bulkAdd((tables.accounts?.length ? tables.accounts : defaultAccounts()) as any);
+    await db.vouchers.bulkAdd((tables.vouchers ?? []) as any);
+    await db.documents.bulkAdd((tables.documents ?? []) as any);
     await db.activity.bulkAdd(tables.activity as any);
     await db.settings.bulkAdd(tables.settings as any);
     await db.counters.bulkAdd(tables.counters);
@@ -131,17 +138,17 @@ export async function importBackup(db: DealerDatabase, json: string, actor: User
   };
 }
 
-/** Removes all business records but keeps staff accounts and showroom settings. */
+/** Removes all business records but keeps staff accounts, cash/bank accounts and showroom settings. */
 export async function clearBusinessData(db: DealerDatabase, actor: User) {
   await db.transaction(
     "rw",
-    [db.vehicles, db.purchases, db.vehicleImages, db.imageBlobs, db.customers, db.reservations, db.sales, db.salePayments, db.expenses, db.activity, db.counters, db.settings],
+    [db.vehicles, db.purchases, db.vehicleImages, db.imageBlobs, db.customers, db.reservations, db.sales, db.salePayments, db.expenses, db.vouchers, db.documents, db.activity, db.counters, db.settings],
     async () => {
       const settings = await db.settings.get("business");
       const logoKey = settings?.logoKey;
       const logo = logoKey ? await db.imageBlobs.get(logoKey) : undefined;
       await Promise.all(
-        [db.vehicles, db.purchases, db.vehicleImages, db.imageBlobs, db.customers, db.reservations, db.sales, db.salePayments, db.expenses, db.activity, db.counters].map((t) => t.clear()),
+        [db.vehicles, db.purchases, db.vehicleImages, db.imageBlobs, db.customers, db.reservations, db.sales, db.salePayments, db.expenses, db.vouchers, db.documents, db.activity, db.counters].map((t) => t.clear()),
       );
       if (logo) await db.imageBlobs.put(logo);
       await db.activity.add({

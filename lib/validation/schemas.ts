@@ -1,6 +1,12 @@
 import { z } from "zod";
 import {
+  ACCOUNT_KINDS,
+  DOCUMENT_KINDS,
+  DOCUMENT_OWNERS,
   EXPENSE_CATEGORIES,
+  INSURANCE_TYPES,
+  PAYMENT_HEADS,
+  RECEIPT_HEADS,
   FUEL_TYPES,
   PAYMENT_METHODS,
   ROLES,
@@ -192,6 +198,10 @@ export const makePaymentSchema = (balancePaise: number) =>
     method: z.enum(PAYMENT_METHODS),
     reference: optionalText(60),
     notes: optionalText(300),
+    /** Null/absent = the default account for the method. */
+    accountId: z.string().nullable().optional(),
+    /** Cash receiver; null/absent = the person recording it. */
+    receivedBy: z.string().nullable().optional(),
   });
 export type PaymentInput = z.infer<ReturnType<typeof makePaymentSchema>>;
 
@@ -209,6 +219,7 @@ export const expenseSchema = z
     paymentMethod: z.enum(PAYMENT_METHODS),
     vehicleId: z.string().nullable(),
     notes: optionalText(500),
+    accountId: z.string().nullable().optional(),
   })
   .superRefine((v, ctx) => {
     if (isVehicleCategory(v.category) && !v.vehicleId)
@@ -254,3 +265,107 @@ export const settingsSchema = z.object({
   maxPhotosPerVehicle: z.number().int().min(1).max(40),
 });
 export type SettingsInput = z.infer<typeof settingsSchema>;
+
+// ─── Accounting ────────────────────────────────────────────────────────────────
+
+/** Opening balances may be negative (an overdrawn bank account). */
+const signedPaise = (label: string) =>
+  z
+    .number({ error: `${label} is required` })
+    .int(`${label} must be a valid amount`)
+    .min(-MAX_PAISE, `${label} looks too large`)
+    .max(MAX_PAISE, `${label} looks too large`);
+
+export const accountSchema = z.object({
+  name: z.string().trim().min(2, "Give the account a name").max(60),
+  kind: z.enum(ACCOUNT_KINDS),
+  bankName: optionalText(60),
+  accountNumber: z
+    .string()
+    .trim()
+    .max(20, "Account number is too long")
+    .refine((v) => v === "" || /^[0-9A-Za-z]{4,20}$/.test(v), "Use 4–20 letters and digits"),
+  ifsc: z
+    .string()
+    .trim()
+    .toUpperCase()
+    .refine((v) => v === "" || /^[A-Z]{4}0[A-Z0-9]{6}$/.test(v), "Enter a valid 11-character IFSC"),
+  upiId: z
+    .string()
+    .trim()
+    .refine((v) => v === "" || /^[\w.-]{2,}@[a-zA-Z]{2,}$/.test(v), "Enter a valid UPI ID, e.g. mgarage@okhdfc"),
+  custodianId: z.string().nullable(),
+  openingBalancePaise: signedPaise("Opening balance"),
+  openingDate: isoDate,
+  isDefault: z.boolean(),
+  archived: z.boolean(),
+  notes: optionalText(300),
+});
+export type AccountInput = z.infer<typeof accountSchema>;
+
+const partyText = z.string().trim().max(80, "Keep this under 80 characters");
+
+export const voucherSchema = z
+  .object({
+    type: z.enum(["receipt", "payment", "contra"]),
+    head: z.string().min(1, "Select what this is for"),
+    date: pastOrTodayDate,
+    amountPaise: positivePaise("Amount"),
+    method: z.enum(PAYMENT_METHODS),
+    accountId: z.string().min(1, "Select an account"),
+    toAccountId: z.string().nullable(),
+    partyName: partyText,
+    partyPhone: optionalIndianPhone,
+    reference: optionalText(60),
+    narration: optionalText(300),
+    purchaseId: z.string().nullable(),
+    saleId: z.string().nullable(),
+    handledBy: z.string().min(1, "Select who handled the money"),
+  })
+  .superRefine((v, ctx) => {
+    const heads: readonly string[] = v.type === "receipt" ? RECEIPT_HEADS : v.type === "payment" ? PAYMENT_HEADS : ["transfer"];
+    if (!heads.includes(v.head)) ctx.addIssue({ code: "custom", path: ["head"], message: "Select what this is for" });
+    if (v.type === "contra") {
+      if (!v.toAccountId) ctx.addIssue({ code: "custom", path: ["toAccountId"], message: "Select the account the money goes to" });
+      else if (v.toAccountId === v.accountId)
+        ctx.addIssue({ code: "custom", path: ["toAccountId"], message: "Pick a different account from the one the money leaves" });
+    } else if (v.partyName.length < 2) {
+      ctx.addIssue({ code: "custom", path: ["partyName"], message: v.type === "receipt" ? "Who paid this?" : "Who was paid?" });
+    }
+    if (v.head === "seller_payment" && !v.purchaseId)
+      ctx.addIssue({ code: "custom", path: ["purchaseId"], message: "Select the purchase this payment settles" });
+  });
+export type VoucherInput = z.infer<typeof voucherSchema>;
+
+const optionalDate = z.union([z.literal(""), isoDate]);
+
+export const papersSchema = z
+  .object({
+    insuranceType: z.enum(INSURANCE_TYPES),
+    insuranceCompany: optionalText(60),
+    insurancePolicyNumber: optionalText(40),
+    insuranceValidTill: optionalDate,
+    pucValidTill: optionalDate,
+    rcValidTill: optionalDate,
+    fitnessValidTill: optionalDate,
+    hypothecated: z.boolean(),
+    financierName: optionalText(80),
+    nocReceived: z.boolean(),
+    rcInHand: z.boolean(),
+    spareKey: z.boolean(),
+    serviceRecords: z.boolean(),
+    notes: optionalText(500),
+  })
+  .superRefine((v, ctx) => {
+    if (v.hypothecated && v.financierName.length < 2)
+      ctx.addIssue({ code: "custom", path: ["financierName"], message: "Name the bank or financier holding the hypothecation" });
+  });
+export type PapersInput = z.infer<typeof papersSchema>;
+
+export const documentMetaSchema = z.object({
+  ownerType: z.enum(DOCUMENT_OWNERS),
+  ownerId: z.string().min(1),
+  kind: z.enum(DOCUMENT_KINDS),
+  title: optionalText(80),
+});
+export type DocumentMetaInput = z.infer<typeof documentMetaSchema>;

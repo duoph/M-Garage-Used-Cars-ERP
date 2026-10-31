@@ -2,12 +2,14 @@ import {
   CarFront,
   CircleDollarSign,
   ClipboardList,
+  FileText,
   Image as ImageIcon,
   PenLine,
   Receipt,
   Settings,
   ShoppingCart,
   Tag,
+  Landmark,
   Undo2,
   UserCog,
   Wallet,
@@ -26,6 +28,9 @@ export function activityIcon(action: ActivityAction): { icon: LucideIcon; tone: 
   if (action.startsWith("sale")) return { icon: Receipt, tone: "bg-success-soft text-success" };
   if (action.startsWith("payment")) return { icon: CircleDollarSign, tone: "bg-success-soft text-success" };
   if (action.startsWith("expense")) return { icon: Wallet, tone: "bg-[#fdf2fa] text-[#c11574]" };
+  if (action === "voucher.cancelled") return { icon: Undo2, tone: "bg-destructive-soft text-destructive" };
+  if (action.startsWith("voucher") || action.startsWith("account")) return { icon: Landmark, tone: "bg-[#ecfdf3] text-[#067647]" };
+  if (action.startsWith("document")) return { icon: FileText, tone: "bg-[#eff4ff] text-[#2948b8]" };
   if (action.startsWith("user")) return { icon: UserCog, tone: "bg-[#f2f4f7] text-[#475467]" };
   if (action.startsWith("settings") || action.startsWith("data")) return { icon: Settings, tone: "bg-[#f2f4f7] text-[#475467]" };
   return { icon: PenLine, tone: "bg-[#f2f4f7] text-[#475467]" };

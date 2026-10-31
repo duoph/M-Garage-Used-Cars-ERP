@@ -40,6 +40,7 @@ function ExpenseDialogBody({ expenseId, vehicleId, onDone }: { expenseId: string
         paymentMethod: existing.paymentMethod,
         vehicleId: existing.vehicleId,
         notes: existing.notes,
+        accountId: existing.accountId ?? null,
       }
     : vehicleId
       ? { vehicleId, category: "repair" }

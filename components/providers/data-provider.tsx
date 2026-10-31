@@ -26,9 +26,9 @@ async function loadDataset(): Promise<Dataset | null> {
   const db = getDb();
   return db.transaction(
     "r",
-    [db.users, db.vehicles, db.purchases, db.vehicleImages, db.customers, db.reservations, db.sales, db.salePayments, db.expenses, db.activity, db.settings],
+    [db.users, db.vehicles, db.purchases, db.vehicleImages, db.customers, db.reservations, db.sales, db.salePayments, db.expenses, db.accounts, db.vouchers, db.documents, db.activity, db.settings],
     async () => {
-      const [users, vehicles, purchases, images, customers, reservations, sales, payments, expenses, activity, settings] = await Promise.all([
+      const [users, vehicles, purchases, images, customers, reservations, sales, payments, expenses, accounts, vouchers, documents, activity, settings] = await Promise.all([
         db.users.toArray(),
         db.vehicles.toArray(),
         db.purchases.toArray(),
@@ -38,11 +38,14 @@ async function loadDataset(): Promise<Dataset | null> {
         db.sales.toArray(),
         db.salePayments.toArray(),
         db.expenses.toArray(),
+        db.accounts.toArray(),
+        db.vouchers.toArray(),
+        db.documents.toArray(),
         db.activity.orderBy("timestamp").reverse().toArray(),
         db.settings.get("business"),
       ]);
       if (!settings) return null;
-      return { users, vehicles, purchases, images, customers, reservations, sales, payments, expenses, activity, settings };
+      return { users, vehicles, purchases, images, customers, reservations, sales, payments, expenses, accounts, vouchers, documents, activity, settings };
     },
   );
 }

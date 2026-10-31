@@ -2,7 +2,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, ImagePlus, Printer, type LucideIcon } from "lucide-react";
+import { ArrowLeft, Printer, type LucideIcon } from "lucide-react";
 import { useData } from "@/components/providers/data-provider";
 import { useAuth } from "@/hooks/use-auth";
 import { useHydrated } from "@/hooks/use-hydrated";
@@ -13,6 +13,7 @@ import { EmptyState } from "@/components/shared/empty-state";
 import { AccessDenied } from "@/components/shared/access-denied";
 import { BootScreen } from "@/components/shared/boot-screen";
 import { ShowroomLogo } from "@/components/shared/showroom-logo";
+import { Wordmark } from "@/components/shared/logo";
 
 /**
  * Shared pieces for the printable receipt and invoice: an A4 sheet on a grey page, a toolbar
@@ -39,8 +40,6 @@ export function DocumentNotFound({ icon, title, href, label }: { icon: LucideIco
 }
 
 export function PrintPage({ back, actions, children }: { back: { href: string; label: string }; actions?: React.ReactNode; children: React.ReactNode }) {
-  const { ds } = useData();
-  const { can } = useAuth();
   return (
     <div className="min-h-dvh bg-[#eef0f3] py-6 print:bg-white print:py-0">
       <div className="no-print mx-auto mb-4 flex max-w-[210mm] flex-wrap items-center justify-between gap-2 px-4">
@@ -48,11 +47,6 @@ export function PrintPage({ back, actions, children }: { back: { href: string; l
           <Link href={back.href}><ArrowLeft /> {back.label}</Link>
         </Button>
         <div className="flex flex-wrap items-center gap-2">
-          {!ds.settings.logoKey && can("settings.manage") && (
-            <Button variant="outline" asChild>
-              <Link href="/settings"><ImagePlus /> Add your logo</Link>
-            </Button>
-          )}
           {actions}
           <Button onClick={() => window.print()}><Printer /> Print / Save as PDF</Button>
         </div>
@@ -70,7 +64,7 @@ export function Letterhead({ title, children }: { title: string; children: React
   return (
     <header className="flex flex-wrap items-start justify-between gap-x-8 gap-y-4">
       <div className="flex items-start gap-4">
-        {s.logoKey && <ShowroomLogo className="size-14" />}
+        {s.logoKey ? <ShowroomLogo className="size-14" /> : <Wordmark className="w-28" />}
         <div>
           <h1 className="text-base font-semibold">{s.showroomName}</h1>
           {/* Lines are skipped when empty so a half-filled profile never prints stray commas. */}

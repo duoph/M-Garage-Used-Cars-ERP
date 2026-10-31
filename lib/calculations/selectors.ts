@@ -6,15 +6,18 @@ import type {
   Expense,
   ExpenseCategory,
   ID,
+  MoneyAccount,
   Paise,
   Purchase,
   Reservation,
   Sale,
   SalePayment,
+  StoredDocument,
   User,
   Vehicle,
   VehicleImage,
   VehicleStatus,
+  Voucher,
 } from "@/types";
 import { VEHICLE_EXPENSE_CATEGORIES } from "@/types";
 import { daysSince, inRange, type DateRange } from "@/lib/utils/dates";
@@ -32,6 +35,9 @@ export interface Dataset {
   sales: Sale[];
   payments: SalePayment[];
   expenses: Expense[];
+  accounts: MoneyAccount[];
+  vouchers: Voucher[];
+  documents: StoredDocument[];
   activity: ActivityLog[];
   settings: BusinessSettings;
 }

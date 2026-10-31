@@ -17,7 +17,8 @@ import {
 import { grossMarginPct } from "@/lib/calculations/finance";
 import { describeRange, formatDate, inRange, resolvePreset, todayISO, type DateRange } from "@/lib/utils/dates";
 import { formatINR, sumPaise } from "@/lib/utils/money";
-import { EXPENSE_CATEGORY_LABELS, FUEL_LABELS, vehicleTitle } from "@/lib/utils/labels";
+import { EXPENSE_CATEGORY_LABELS, FUEL_LABELS, PAYMENT_STATUS_LABELS, vehicleTitle } from "@/lib/utils/labels";
+import type { SaleView } from "@/lib/calculations/selectors";
 import { csvRupees, downloadCsv } from "@/lib/utils/csv";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -184,10 +185,16 @@ export function ReportsPage() {
                     { header: "Sale Ref", value: (r) => r.sale.reference },
                     { header: "Date", value: (r) => r.sale.saleDate },
                     { header: "Vehicle", value: (r) => (r.vehicle ? `${r.vehicle.year} ${vehicleTitle(r.vehicle)}` : "") },
+                    { header: "Registration", value: (r) => r.vehicle?.registrationNumber },
+                    { header: "Stock No", value: (r) => r.vehicle?.stockNumber },
                     { header: "Buyer", value: (r) => r.customer?.name },
+                    { header: "Buyer phone", value: (r) => r.customer?.phone },
+                    { header: "Sold by", value: (r) => r.soldBy?.name },
                     { header: "Sale price (INR)", value: (r) => csvRupees(r.sale.salePricePaise) },
                     { header: "Received (INR)", value: (r) => csvRupees(r.totals.receivedPaise) },
                     { header: "Balance (INR)", value: (r) => csvRupees(r.totals.balancePaise) },
+                    { header: "Payment status", value: (r) => PAYMENT_STATUS_LABELS[r.totals.paymentStatus] },
+                    ...(can("finance.viewProfit") ? [{ header: "Gross profit (INR)", value: (r: (typeof sales)[number]) => csvRupees(r.profitPaise) }] : []),
                   ]);
                   toast.success("Sales report exported");
                 }}
@@ -226,6 +233,7 @@ export function ReportsPage() {
               </Table>
             )}
           </Card>
+          <SalesBreakdowns sales={sales} showProfit={can("finance.viewProfit")} />
         </TabsContent>
 
         {can("finance.viewCost") && (
@@ -386,5 +394,56 @@ export function ReportsPage() {
         )}
       </Tabs>
     </>
+  );
+}
+
+/** Sales grouped by who sold them and by make, for the period's sales report. */
+function SalesBreakdowns({ sales, showProfit }: { sales: SaleView[]; showProfit: boolean }) {
+  if (sales.length === 0) return null;
+  const groups = (key: (s: SaleView) => string) => {
+    const map = new Map<string, SaleView[]>();
+    for (const s of sales) map.set(key(s), [...(map.get(key(s)) ?? []), s]);
+    return [...map.entries()]
+      .map(([name, rows]) => ({
+        name,
+        count: rows.length,
+        revenue: sumPaise(rows.map((r) => r.sale.salePricePaise)),
+        received: sumPaise(rows.map((r) => r.totals.receivedPaise)),
+        profit: sumPaise(rows.map((r) => r.profitPaise)),
+      }))
+      .sort((a, b) => b.revenue - a.revenue);
+  };
+  const tables = [
+    { title: "By salesperson", first: "Sold by", rows: groups((s) => s.soldBy?.name ?? "Unknown") },
+    { title: "By make", first: "Make", rows: groups((s) => s.vehicle?.make ?? "Unknown") },
+  ];
+  return (
+    <div className="grid gap-4 lg:grid-cols-2">
+      {tables.map((t) => (
+        <Card key={t.title}>
+          <CardHeader><CardTitle>{t.title}</CardTitle></CardHeader>
+          <Table>
+            <TableHeader>
+              <TableRow className="hover:bg-transparent">
+                <TableHead>{t.first}</TableHead>
+                <TableHead className="text-right">Cars</TableHead>
+                <TableHead className="text-right">Revenue</TableHead>
+                <TableHead className="text-right">{showProfit ? "Gross profit" : "Received"}</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {t.rows.map((r) => (
+                <TableRow key={r.name}>
+                  <TableCell className="font-medium">{r.name}</TableCell>
+                  <TableCell className="text-right tabular">{r.count}</TableCell>
+                  <TableCell className="text-right tabular">{formatINR(r.revenue)}</TableCell>
+                  <TableCell className={`text-right tabular ${showProfit && r.profit < 0 ? "text-destructive" : ""}`}>{formatINR(showProfit ? r.profit : r.received)}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </Card>
+      ))}
+    </div>
   );
 }

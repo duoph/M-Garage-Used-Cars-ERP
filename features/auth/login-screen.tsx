@@ -5,18 +5,19 @@ import { ArrowRight, Info, ShieldCheck } from "lucide-react";
 import { useData } from "@/components/providers/data-provider";
 import { useSessionStore } from "@/lib/store/session";
 import { ROLE_LABELS } from "@/lib/utils/labels";
-import { Logo } from "@/components/shared/logo";
+import { Wordmark } from "@/components/shared/logo";
 import { UserAvatar } from "@/components/shared/user-avatar";
 import type { Role } from "@/types";
 
 const ROLE_SUMMARY: Record<Role, string> = {
   admin: "Full access, including staff accounts and settings",
   manager: "Operations, purchasing, pricing and profit",
+  office: "Papers, documents, vouchers and the cash book",
   sales: "Stock, reservations and sales — no cost or profit",
   accountant: "Payments, expenses and financial reports",
 };
 
-const ROLE_ORDER: Role[] = ["admin", "manager", "sales", "accountant"];
+const ROLE_ORDER: Role[] = ["admin", "manager", "office", "sales", "accountant"];
 
 export function LoginScreen() {
   const { ds } = useData();
@@ -28,28 +29,26 @@ export function LoginScreen() {
 
   return (
     <div className="grid min-h-dvh lg:grid-cols-[1fr_1.1fr]">
-      <aside className="relative hidden flex-col justify-between overflow-hidden bg-sidebar p-10 text-white lg:flex">
-        <Logo dark tagline />
+      <aside className="relative hidden flex-col justify-between overflow-hidden bg-[#050505] p-10 text-white lg:flex">
+        <Wordmark dark className="-ml-6 w-80 [mask-image:radial-gradient(ellipse_at_center,black_55%,transparent_78%)]" />
         <div className="relative z-10 max-w-md">
           <h1 className="text-3xl font-semibold tracking-tight">Run M Garage from one place.</h1>
           <p className="mt-3 text-[15px] leading-relaxed text-sidebar-foreground">
-            Purchases, stock, photos, sales, payments and expenses — with profit you can trust, down to the paisa.
+            Purchases, stock, papers, sales, cash book and accounts — with profit you can trust, down to the paisa.
           </p>
           <ul className="mt-8 grid gap-3 text-sm text-sidebar-foreground">
-            {["Every car's landed cost and margin, automatically", "Role-based access for owners, managers, sales and accounts", "Printable sale receipts and clean CSV exports"].map((t) => (
+            {["Every car's landed cost and margin, automatically", "Cash & bank book, receipt and payment vouchers, P&L", "Insurance, PUC and hypothecation alerts with scanned papers"].map((t) => (
               <li key={t} className="flex items-center gap-2.5">
-                <ShieldCheck className="size-4 text-sidebar-highlight" /> {t}
+                <ShieldCheck className="size-4 text-[#ef4444]" /> {t}
               </li>
             ))}
           </ul>
         </div>
-        <p className="relative z-10 text-xs text-sidebar-muted">© {new Date().getFullYear()} M Garage Used Car Dealer</p>
-        <div className="pointer-events-none absolute -right-32 -bottom-40 size-[520px] rounded-full border border-white/5" />
-        <div className="pointer-events-none absolute -right-16 -bottom-24 size-[360px] rounded-full border border-white/5" />
+        <p className="relative z-10 text-xs text-white/60">© {new Date().getFullYear()} M Garage · Pre Owned Cars</p>
       </aside>
       <main className="flex items-center justify-center px-4 py-10 sm:px-8">
         <div className="w-full max-w-md">
-          <Logo tagline className="mb-8 lg:hidden" />
+          <Wordmark className="mx-auto mb-8 w-60 lg:hidden" />
           <h2 className="text-xl font-semibold tracking-tight">Sign in to {ds.settings.showroomName}</h2>
           <p className="mt-1 text-sm text-muted-foreground">Choose your account to continue.</p>
           <div className="mt-4 flex gap-2.5 rounded-lg border border-[#fde7b0] bg-warning-soft p-3 text-[13px] text-[#7a3e06]">

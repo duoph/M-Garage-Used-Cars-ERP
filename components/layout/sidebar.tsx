@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { ChevronsLeft, LogOut, Plus, X } from "lucide-react";
+import { ChevronsLeft, LogOut, X } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
 import { NAV_ITEMS, NAV_SECTIONS, isActivePath } from "@/lib/navigation";
 import { activeVehicles, outstandingBalances, vehicleView } from "@/lib/calculations/selectors";
@@ -11,7 +11,6 @@ import { useAuth } from "@/hooks/use-auth";
 import { useData } from "@/components/providers/data-provider";
 import { useUiStore } from "@/lib/store/ui";
 import { useSessionStore } from "@/lib/store/session";
-import { useDialogStore } from "@/lib/store/dialogs";
 import { ShowroomLogo } from "@/components/shared/showroom-logo";
 import { UserAvatar } from "@/components/shared/user-avatar";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -42,7 +41,7 @@ function useNavBadges(): Record<string, Badge | undefined> {
 
 /**
  * The navigation panel, shared by the desktop sidebar and the phone drawer. `mobile` makes rows taller for
- * thumbs and adds a close button and quick actions; `collapsed` (desktop only) shows icons with tooltips.
+ * thumbs and adds a close button; `collapsed` (desktop only) shows icons with tooltips.
  */
 export function SidebarNav({ collapsed = false, mobile = false, onNavigate }: { collapsed?: boolean; mobile?: boolean; onNavigate?: () => void }) {
   const pathname = usePathname();
@@ -60,7 +59,7 @@ export function SidebarNav({ collapsed = false, mobile = false, onNavigate }: { 
             <div className={cn("truncate font-semibold text-white", mobile ? "text-[15px]" : "text-sm")} title={ds.settings.showroomName}>
               {ds.settings.showroomName}
             </div>
-            <div className="text-[10px] font-medium tracking-[0.14em] text-sidebar-muted uppercase">Used Car Dealer</div>
+            <div className="text-[10px] font-medium tracking-[0.14em] text-sidebar-muted uppercase">Pre Owned Cars</div>
           </div>
         )}
         {mobile && (
@@ -74,8 +73,6 @@ export function SidebarNav({ collapsed = false, mobile = false, onNavigate }: { 
           </button>
         )}
       </div>
-
-      {mobile && <QuickActions onNavigate={onNavigate} />}
 
       <nav aria-label="Main" className="flex-1 overflow-y-auto px-2 py-2 [scrollbar-color:var(--sidebar-accent)_transparent] [scrollbar-width:thin]">
         {NAV_SECTIONS.map((section, si) => {
@@ -148,37 +145,6 @@ export function SidebarNav({ collapsed = false, mobile = false, onNavigate }: { 
       </nav>
 
       <UserCard collapsed={collapsed} mobile={mobile} />
-    </div>
-  );
-}
-
-/** "Add purchase / Record sale / Add expense" — on phones the topbar's New menu is a small icon, so repeat them here. */
-function QuickActions({ onNavigate }: { onNavigate?: () => void }) {
-  const { can } = useAuth();
-  const router = useRouter();
-  const openExpense = useDialogStore((s) => s.openExpense);
-  const actions = [
-    can("purchases.manage") && { label: "Purchase", run: () => router.push("/purchases/new") },
-    can("sales.create") && { label: "Sale", run: () => router.push("/sales/new") },
-    can("expenses.manage") && { label: "Expense", run: () => openExpense() },
-  ].filter((a) => a !== false);
-  if (actions.length === 0) return null;
-  return (
-    <div className="flex shrink-0 items-center border-b border-sidebar-border px-2 py-1.5">
-      {actions.map((a) => (
-        <button
-          key={a.label}
-          type="button"
-          onClick={() => {
-            onNavigate?.();
-            a.run();
-          }}
-          className="flex flex-1 items-center justify-center gap-1 rounded-md px-1 py-1 text-[13px] text-sidebar-foreground outline-none hover:bg-sidebar-accent hover:text-white focus-visible:ring-2 focus-visible:ring-sidebar-highlight/60"
-        >
-          <Plus className="size-3 shrink-0 opacity-70" aria-hidden />
-          {a.label}
-        </button>
-      ))}
     </div>
   );
 }

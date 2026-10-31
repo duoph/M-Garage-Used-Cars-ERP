@@ -2,7 +2,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { Ban, FileText, Plus, Printer, Receipt } from "lucide-react";
+import { Ban, FileSignature, FileText, Plus, Printer, Receipt } from "lucide-react";
 import { toast } from "sonner";
 import { useData } from "@/components/providers/data-provider";
 import { useAuth, useCurrentUser } from "@/hooks/use-auth";
@@ -25,6 +25,7 @@ import { VehicleImage } from "@/components/shared/vehicle-image";
 import { PaymentStatusBadge, SaleStatusBadge } from "@/components/shared/status-badge";
 import { ActivityFeed } from "@/features/activity/activity-feed";
 import { PaymentDialog } from "./payment-dialog";
+import { DocumentsCard } from "@/features/documents/documents-card";
 
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -76,6 +77,11 @@ export function SaleDetailPage() {
             {can("receipts.print") && (
               <Button variant="outline" asChild>
                 <Link href={`/invoice/${sale.id}`} target="_blank"><FileText /> Invoice</Link>
+              </Button>
+            )}
+            {can("receipts.print") && (
+              <Button variant="outline" asChild>
+                <Link href={`/sale-letter/${sale.id}`} target="_blank"><FileSignature /> Sale letter</Link>
               </Button>
             )}
             {can("receipts.print") && latest && (
@@ -204,6 +210,14 @@ export function SaleDetailPage() {
       {sale.notes && (
         <Card className="mt-4 p-4 text-[13px]"><div className="mb-1 text-xs font-medium text-muted-foreground">Sale notes</div>{sale.notes}</Card>
       )}
+      <DocumentsCard
+        ownerType="sale"
+        ownerId={sale.id}
+        title="Buyer documents"
+        description="Buyer's ID and address proof, PAN for high-value sales, and the signed sale letter / delivery note."
+        checklist={["id_proof", "address_proof", "sale_letter"]}
+        className="mt-4"
+      />
       <Card className="mt-4">
         <CardHeader className="pb-0"><CardTitle>History</CardTitle></CardHeader>
         <div className="px-4"><ActivityFeed limit={20} compact filter={(e) => e.entityId === sale.id || e.href === `/sales/${sale.id}`} /></div>
