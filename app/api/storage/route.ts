@@ -11,4 +11,4 @@ export async function GET() {
     console.error("R2 usage lookup failed", error);
     return NextResponse.json({ error: "Photo storage is unavailable." }, { status: 500 });
   }
-} 
+}
