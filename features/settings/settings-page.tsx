@@ -16,7 +16,7 @@ import { settingsSchema, type SettingsInput } from "@/lib/validation/schemas";
 import { getDb } from "@/lib/db/database";
 import { clearBusinessData, exportBackup, importBackup } from "@/lib/db/backup";
 import { formatBytes, prepareLogo } from "@/lib/images/process";
-import { INVOICE_TEMPLATES, type InvoiceTemplateId } from "@/types";
+import { DEFAULT_INVOICE_TEMPLATE, INVOICE_TEMPLATES, type InvoiceTemplateId } from "@/types";
 import { INVOICE_TEMPLATE_INFO } from "@/features/sales/invoice-templates";
 import { isR2Key } from "@/lib/images/r2-keys";
 import { downloadFile } from "@/lib/utils/csv";
@@ -225,7 +225,7 @@ function AppearanceSection() {
 function InvoiceTemplateSection() {
   const { ds } = useData();
   const user = useCurrentUser();
-  const current = ds.settings.invoiceTemplate ?? "classic";
+  const current = ds.settings.invoiceTemplate ?? DEFAULT_INVOICE_TEMPLATE;
   const [saving, setSaving] = React.useState<InvoiceTemplateId | null>(null);
   async function choose(t: InvoiceTemplateId) {
     setSaving(t);
@@ -240,7 +240,7 @@ function InvoiceTemplateSection() {
   }
   return (
     <SettingsSection title="Invoice template" description="Layout used when printing sale invoices. It can also be switched from the invoice's toolbar.">
-      <div role="radiogroup" aria-label="Invoice template" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div role="radiogroup" aria-label="Invoice template" className="grid gap-3 sm:grid-cols-3 lg:grid-cols-5">
         {INVOICE_TEMPLATES.map((t) => {
           const selected = t === current;
           return (
@@ -275,6 +275,19 @@ function InvoiceTemplateSection() {
 /** Tiny schematic of each invoice layout for the picker. */
 function InvoiceThumb({ template }: { template: InvoiceTemplateId }) {
   const line = "h-1 rounded-sm bg-[#d0d5dd]";
+  if (template === "mgarage")
+    return (
+      <div className="flex h-24 flex-col gap-1 bg-[#f7f9fc] p-2.5">
+        <span className="h-2 w-1/4 self-center rounded-sm bg-[#98a2b3]" />
+        <span className="h-1.5 w-full bg-[#e31e24]" />
+        <span className="h-1.5 w-1/2 border border-[#d0d5dd] bg-white" />
+        <span className="h-1.5 w-1/2 border border-[#d0d5dd] bg-white" />
+        <div className="grid grid-cols-2 gap-1">
+          {[0, 1, 2, 3].map((i) => <span key={i} className="h-1.5 border border-[#d0d5dd] bg-white" />)}
+        </div>
+        <span className="mt-auto h-1.5 w-full bg-[#e31e24]" />
+      </div>
+    );
   return (
     <div className="flex h-24 flex-col gap-1.5 bg-[#f7f9fc] p-2.5">
       {template === "modern" && <div className="-mx-2.5 -mt-2.5 mb-0.5 h-5 bg-primary" />}

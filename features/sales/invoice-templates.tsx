@@ -1,7 +1,9 @@
 "use client";
 import * as React from "react";
+import { Noto_Sans_Malayalam } from "next/font/google";
 import { useData } from "@/components/providers/data-provider";
 import { ShowroomLogo } from "@/components/shared/showroom-logo";
+import { Wordmark } from "@/components/shared/logo";
 import { cn } from "@/lib/utils/cn";
 import { formatDate } from "@/lib/utils/dates";
 import { formatINR } from "@/lib/utils/money";
@@ -9,6 +11,9 @@ import { FUEL_LABELS, PAYMENT_METHOD_LABELS, TRANSMISSION_LABELS, formatKm, vehi
 import { paiseToWords } from "@/lib/utils/words";
 import { AmountRows, Letterhead, Signature } from "@/features/documents/print-layout";
 import type { BusinessSettings, Customer, InvoiceTemplateId, Sale, SalePayment, Vehicle } from "@/types";
+
+/** The Malayalam terms print in Noto Sans Malayalam so they look the same on every computer. */
+const malayalam = Noto_Sans_Malayalam({ subsets: ["malayalam"], weight: ["400", "600"], variable: "--font-malayalam" });
 
 /** Everything an invoice layout needs, worked out once by the invoice page. */
 export interface InvoiceData {
@@ -23,6 +28,7 @@ export interface InvoiceData {
 }
 
 export const INVOICE_TEMPLATE_INFO: Record<InvoiceTemplateId, { label: string; description: string }> = {
+  mgarage: { label: "M Garage", description: "Showroom format with Malayalam terms and bank details" },
   classic: { label: "Classic", description: "Plain letterhead, generous spacing" },
   modern: { label: "Modern", description: "Coloured header band and detail table" },
   compact: { label: "Compact", description: "Dense layout that fits on half a page" },
@@ -30,11 +36,12 @@ export const INVOICE_TEMPLATE_INFO: Record<InvoiceTemplateId, { label: string; d
 };
 
 export function InvoiceDocument({ template, data }: { template: InvoiceTemplateId; data: InvoiceData }) {
-  const Layout = LAYOUTS[template] ?? ClassicInvoice;
+  const Layout = LAYOUTS[template] ?? MGarageInvoice;
   return <Layout {...data} />;
 }
 
 const LAYOUTS: Record<InvoiceTemplateId, (d: InvoiceData) => React.ReactNode> = {
+  mgarage: MGarageInvoice,
   classic: ClassicInvoice,
   modern: ModernInvoice,
   compact: CompactInvoice,
@@ -79,6 +86,151 @@ function Footer({ sale, className }: { sale: Sale; className?: string }) {
 
 function contactLine(s: BusinessSettings) {
   return [s.phone, s.email].filter(Boolean).join(" · ");
+}
+
+// ─── M Garage (showroom format) ────────────────────────────────────────────────
+
+/** Printed in Malayalam on the M Garage format, two columns under "നിബന്ധനകൾ". */
+const MALAYALAM_TERMS = [
+  "ബുക്കിംഗ് ചെയ്യുന്നതിന് മുമ്പായി വാഹനത്തിന്റെ ഡോക്യുമെന്റുകൾ പരിശോധിച്ചും വാഹനം ഓടിച്ചു നോക്കിയും ഗുണനിലവാരം ഉറപ്പുവരുത്തേണ്ടതാണ്.",
+  "ബുക്കിംഗ് തുക തിരികെ നൽകുന്നതല്ല. പകരം മറ്റു വാഹനങ്ങളിലേക്ക് മാറ്റി എടുക്കാവുന്നതാണ്. പരമാവധി 7 ദിവസം വരെ വാഹനം ഹോൾഡ് ചെയ്യുന്നതാണ്.",
+  "ഫിനാൻസ് ചെയ്യുന്ന വാഹനം ഫിനാൻസ് കമ്പനിയുടെ ഡെലിവറി ഓർഡർ അല്ലെങ്കിൽ കൺഫർമേഷൻ ലെറ്റർ ലഭിച്ചതിന് ശേഷം മാത്രമേ ഡെലിവറി ചെയ്യുകയുള്ളൂ.",
+  "നിങ്ങളുടെ നിലവിലുള്ള വാഹനം എം ഗാരേജ് കാറുമായി എക്സ്ചേഞ്ച് ചെയ്യുമ്പോൾ വാഹനത്തിന് പരമാവധി വില ലഭിക്കുന്നതിന് നിങ്ങളുടെ വാഹനത്തിന്റെ ഗുണനിലവാരം വിധേയമായും നിങ്ങൾ തിരഞ്ഞെടുക്കുന്ന വാഹനത്തിനനുസരിച്ചുമാണ്.",
+  "ചെക്ക് പെയ്മെന്റ് ചെയ്യുമ്പോൾ ക്ലിയറൻസിന് ശേഷമേ ഡെലിവറി അനുവദിക്കുകയുള്ളൂ. ഡെലിവറി എടുക്കുന്നതിന് മുമ്പായി ബാലൻസ് തുക അക്കൗണ്ടിലേക്ക് ട്രാൻസ്ഫർ ചെയ്യേണ്ടതാണ്.",
+  "ആർ.സി. പേരിൽ മാറുന്നതിന് വേണ്ടി ട്രാൻസ്ഫർ ഫോമിൽ ഒപ്പ് വെച്ച് മൊബൈൽ നമ്പർ ഒ.ടി.പി., ആധാർ കാർഡ് അറ്റെസ്റ്റഡ് കോപ്പി ഡെലിവറി സമയത്ത് സമർപ്പിക്കേണ്ടതാണ്.",
+];
+
+const red = cn("bg-[#e31e24] text-white", keepColour);
+const grey = cn("bg-[#e5e7eb] text-[#e31e24]", keepColour);
+/** Whole rupees, no symbol, as the showroom writes them: 730000. */
+const rupees = (paise: number) => String(Math.round(paise / 100));
+
+function MGarageInvoice({ number, sale, vehicle, customer, payments, paidPaise, balancePaise }: InvoiceData) {
+  const { ds, idx } = useData();
+  const s = ds.settings;
+  const dse = idx.users.get(sale.soldBy)?.name ?? "";
+  const financed = payments.some((p) => p.method === "finance");
+  const bank = ds.accounts.find((a) => a.kind === "bank" && a.isDefault && !a.archived) ?? ds.accounts.find((a) => a.kind === "bank" && !a.archived);
+  const box = "border border-[#111827] px-3 py-1.5 font-bold";
+  return (
+    <div className={cn(malayalam.variable, "text-[13px] leading-snug")}>
+      <header className="text-center">
+        <Wordmark className="mx-auto w-52" />
+        {(s.address || s.city) && <p className="mt-1 text-[13px] uppercase">{[s.address, s.city].filter(Boolean).join(" - ")}</p>}
+        {(s.phone || s.email) && <p className="text-[13px]">{[s.phone, s.email].filter(Boolean).join(", ")}</p>}
+        {s.gstin && <p className="text-xs">GSTIN {s.gstin}</p>}
+      </header>
+
+      <h2 className={cn("mt-3 py-1 text-center text-xl font-bold tracking-wide", red)}>INVOICE</h2>
+
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <span className="text-xs">INVOICE NO :</span>
+          <span className={box}>{number}</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-xs">DATE :</span>
+          <span className={cn(box, "min-w-32 text-center")}>{formatDate(sale.saleDate, "dd/MM/yyyy")}</span>
+        </div>
+      </div>
+
+      <div className="mt-3 grid grid-cols-[9.5rem_1fr] border border-[#111827]">
+        <span className={cn("px-3 py-1.5", red)}>VEHICLE REG. NO</span>
+        <span className="px-6 py-1.5 font-bold">{vehicle?.registrationNumber}</span>
+      </div>
+      <div className="mt-1.5 grid grid-cols-[9.5rem_1fr] border border-[#111827]">
+        <span className={cn("px-3 py-1.5", red)}>VEHICLE MODEL</span>
+        <span className="px-6 py-1.5 font-bold">{vehicle ? `${vehicleTitle(vehicle)} ${vehicle.variant} ${vehicle.year}`.replace(/\s+/g, " ") : ""}</span>
+      </div>
+      {vehicle && (vehicle.chassisNumber || vehicle.engineNumber) && (
+        <p className="mt-1 text-xs">
+          {[vehicle.chassisNumber && `Chassis no. ${vehicle.chassisNumber}`, vehicle.engineNumber && `Engine no. ${vehicle.engineNumber}`, vehicle.color, formatKm(vehicle.mileageKm)].filter(Boolean).join(" · ")}
+        </p>
+      )}
+
+      <div className="mt-3 border border-[#111827]">
+        <p className={cn("py-0.5 text-center font-semibold", grey)}>CUSTOMER NAME &amp; ADDRESS</p>
+        <div className="min-h-20 px-16 py-2 font-bold uppercase">
+          <p>{customer?.name}</p>
+          {customer?.address && <p className="whitespace-pre-line">{customer.address}</p>}
+          {customer?.phone && <p>{customer.phone}</p>}
+        </div>
+      </div>
+
+      <div className="mt-3 grid grid-cols-2 gap-6">
+        <div className="flex border border-[#111827]">
+          <span className="border-r border-[#111827] px-3 py-1.5">TYPE :</span>
+          <span className="flex-1 px-3 py-1.5 text-center font-bold">{financed ? "FINANCE" : "CASH"}</span>
+        </div>
+        <div className="flex border border-[#111827]">
+          <span className="border-r border-[#111827] px-3 py-1.5">DSE :</span>
+          <span className="flex-1 px-3 py-1.5 text-center font-bold uppercase">{dse}</span>
+        </div>
+      </div>
+
+      <p className={cn("mt-3 py-0.5 text-center font-semibold", grey)}>PRICE AND PAYMENT DETAILS</p>
+      <div className="mt-2 grid grid-cols-2 gap-x-6 gap-y-1.5">
+        <PriceRow label="VEHICLE SALES AMOUNT" value={rupees(sale.salePricePaise)} />
+        <PriceRow label="AMOUNT PAID" value={rupees(paidPaise)} />
+        <PriceRow label="RTO EXPENSE" value="0" />
+        <PriceRow label="EXCHANGE CAR VALUE" value="0" />
+        <PriceRow label="OTHER CHARGES" value="0" />
+        <PriceRow label="BALANCE TO BE PAID" value={rupees(balancePaise)} />
+        <PriceRow label="TOTAL AMOUNT" value={rupees(sale.salePricePaise)} />
+      </div>
+      <p className="mt-1 text-xs italic">{paiseToWords(sale.salePricePaise)}</p>
+
+      <div className="mt-3 border border-[#111827]">
+        <p className={cn("py-0.5 text-center font-semibold", grey)}>ADDITIONAL NOTES</p>
+        <div className="min-h-20 px-16 py-2">
+          {sale.notes && <p className="font-bold uppercase">{sale.notes}</p>}
+          {payments.length > 0 && (
+            <ul className="mt-1 text-xs">
+              {payments.map((p) => <li key={p.id}>{paymentLabel(p)} — {rupees(p.amountPaise)}/-</li>)}
+            </ul>
+          )}
+          <Cancelled sale={sale} />
+        </div>
+      </div>
+
+      <h3 className={cn("mt-3 py-0.5 text-center text-base font-semibold", red)} lang="ml" style={{ fontFamily: "var(--font-malayalam)" }}>നിബന്ധനകൾ</h3>
+      <ul lang="ml" className="mt-2 grid grid-cols-2 gap-x-6 gap-y-2 text-[11.5px] leading-snug" style={{ fontFamily: "var(--font-malayalam)" }}>
+        {MALAYALAM_TERMS.map((t) => (
+          <li key={t} className="flex gap-2">
+            <span className="mt-1 size-2 shrink-0 rounded-full bg-[#111827]" aria-hidden />
+            <span>{t}</span>
+          </li>
+        ))}
+      </ul>
+
+      {bank && (
+        <div className="mt-3 break-inside-avoid border border-[#111827]">
+          <p className={cn("py-0.5 text-center font-semibold", red)}>BANK ACCOUNT DETAILS</p>
+          <div className="grid grid-cols-2 gap-x-6 px-4 py-1.5 text-xs font-semibold">
+            <p>Account Name : {(s.legalName || s.showroomName).toUpperCase()}</p>
+            <p className="text-right">Account No. : {bank.accountNumber}</p>
+            <p>Bank Name : {(bank.bankName || bank.name).toUpperCase()}</p>
+            <p className="text-right">IFS Code : {bank.ifsc}</p>
+            {bank.upiId && <p>UPI : {bank.upiId}</p>}
+          </div>
+        </div>
+      )}
+
+      <div className="mt-14 flex justify-between gap-6 text-[13px] font-semibold">
+        <p>Cash Received &amp; Confirmed by</p>
+        <p>Name &amp; Signature of Customer</p>
+      </div>
+    </div>
+  );
+}
+
+function PriceRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="grid grid-cols-[1fr_9rem] items-center gap-2">
+      <span className="text-xs">{label}</span>
+      <span className="border border-[#111827] px-3 py-1.5 text-right font-bold tabular">{value}</span>
+    </div>
+  );
 }
 
 // ─── Classic ───────────────────────────────────────────────────────────────────

@@ -1,3 +1,4 @@
+import { addDays, addMonths, addWeeks, format, parseISO, startOfWeek, subDays } from "date-fns";
 import type { AccountKind, ID, ISODate, MoneyAccount, Paise, PaymentMethod, Purchase, Sale } from "@/types";
 import { EXPENSE_CATEGORY_LABELS, PAYMENT_METHOD_LABELS, VOUCHER_HEAD_LABELS, vehicleTitle } from "@/lib/utils/labels";
 import { daysSince, inRange, type DateRange } from "@/lib/utils/dates";
@@ -308,6 +309,121 @@ export function duesReport(ds: Dataset, idx: DatasetIndex, asOf: ISODate, create
   const receivablePaise = sumPaise(rows.filter((r) => r.side === "receivable").map((r) => r.outstandingPaise));
   const payablePaise = sumPaise(rows.filter((r) => r.side === "payable").map((r) => r.outstandingPaise));
   return { rows, receivablePaise, payablePaise, netPaise: receivablePaise - payablePaise, partyTotals };
+}
+
+// ─── j) Date-wise summary ──────────────────────────────────────────────────────
+
+export type DateGrouping = "day" | "week" | "month";
+
+export interface DateWiseRow {
+  /** First day of the period. */
+  key: ISODate;
+  /** Last day of the period, clipped to the range. */
+  end: ISODate;
+  carsSold: number;
+  salesPaise: Paise;
+  returnsPaise: Paise;
+  carsBought: number;
+  purchasesPaise: Paise;
+  expensesPaise: Paise;
+  /** Ledger money in / out, excluding opening balances and transfers between own accounts (as the Day Book). */
+  inPaise: Paise;
+  outPaise: Paise;
+}
+
+function periodStart(d: ISODate, by: DateGrouping): ISODate {
+  if (by === "day") return d;
+  if (by === "month") return `${d.slice(0, 7)}-01`;
+  // Indian business week starts on Monday.
+  return format(startOfWeek(parseISO(d), { weekStartsOn: 1 }), "yyyy-MM-dd");
+}
+
+function nextPeriod(d: ISODate, by: DateGrouping): ISODate {
+  const date = parseISO(d);
+  return format(by === "day" ? addDays(date, 1) : by === "week" ? addWeeks(date, 1) : addMonths(date, 1), "yyyy-MM-dd");
+}
+
+/**
+ * Sales, returns, purchases, expenses and money in / out per day, week or month. Periods with no activity
+ * are listed too (unless `skipEmpty`), from the range start (or first activity) to its end (or today).
+ */
+export function dateWiseReport(ds: Dataset, range: Range, branchIds: readonly ID[] | null, by: DateGrouping, skipEmpty: boolean) {
+  const map = new Map<ISODate, DateWiseRow>();
+  const bucket = (date: ISODate) => {
+    const key = periodStart(date.slice(0, 10), by);
+    let row = map.get(key);
+    if (!row) {
+      row = { key, end: key, carsSold: 0, salesPaise: 0, returnsPaise: 0, carsBought: 0, purchasesPaise: 0, expensesPaise: 0, inPaise: 0, outPaise: 0 };
+      map.set(key, row);
+    }
+    return row;
+  };
+  const dates: ISODate[] = [];
+  const take = (date: ISODate, branchId: ID | null | undefined) => {
+    if (!inRange(date, range) || !branchOk(branchId, branchIds)) return null;
+    dates.push(date.slice(0, 10));
+    return bucket(date);
+  };
+
+  for (const s of ds.sales) {
+    if (s.status !== "completed") continue;
+    const row = take(s.saleDate, s.branchId);
+    if (row) { row.carsSold += 1; row.salesPaise += s.salePricePaise; }
+  }
+  for (const r of ds.salesReturns) {
+    const row = take(r.date, r.branchId);
+    if (row) row.returnsPaise += r.returnAmountPaise;
+  }
+  for (const p of ds.purchases) {
+    if (p.status !== "active") continue;
+    const row = take(p.purchaseDate, p.branchId);
+    if (row) { row.carsBought += 1; row.purchasesPaise += p.purchasePricePaise; }
+  }
+  for (const e of ds.expenses) {
+    const row = take(e.date, e.branchId);
+    if (row) row.expensesPaise += e.amountPaise;
+  }
+  for (const e of entriesForBranches(ds.ledger, branchIds)) {
+    if (e.source === "opening" || e.transfer) continue;
+    const row = take(e.date, null);
+    if (!row) continue;
+    if (e.direction === "in") row.inPaise += e.amountPaise;
+    else row.outPaise += e.amountPaise;
+  }
+
+  // Fill the gaps so every day / week / month in the range shows, even when nothing happened.
+  if (!skipEmpty && dates.length + (range.from ? 1 : 0) > 0) {
+    const sorted = [...dates].sort();
+    const today = format(new Date(), "yyyy-MM-dd");
+    const first = range.from ?? sorted[0];
+    const lastActivity = sorted.at(-1) ?? first;
+    // Ranges that run into the future ("This month") stop at today, unless something is dated later.
+    const end = range.to ?? today;
+    const last = end > today ? (lastActivity > today ? lastActivity : today) : end;
+    let cursor = periodStart(first, by);
+    // A guard so an "All time" daily view of many years can't build thousands of empty rows.
+    for (let n = 0; cursor <= last && n < 3700; n++, cursor = nextPeriod(cursor, by)) bucket(cursor);
+  }
+
+  const rows = [...map.values()].sort((a, b) => a.key.localeCompare(b.key));
+  for (const r of rows) {
+    const end = by === "day" ? r.key : format(subDays(parseISO(nextPeriod(r.key, by)), 1), "yyyy-MM-dd");
+    r.end = range.to && end > range.to ? range.to : end;
+    if (range.from && r.key < range.from) r.key = range.from;
+  }
+  const total = (k: keyof Omit<DateWiseRow, "key" | "end">) => rows.reduce((s, r) => s + r[k], 0);
+  return {
+    rows,
+    carsSold: total("carsSold"),
+    salesPaise: total("salesPaise"),
+    returnsPaise: total("returnsPaise"),
+    carsBought: total("carsBought"),
+    purchasesPaise: total("purchasesPaise"),
+    expensesPaise: total("expensesPaise"),
+    inPaise: total("inPaise"),
+    outPaise: total("outPaise"),
+    activeDays: new Set(dates).size,
+  };
 }
 
 // ─── i) Account balance summary ────────────────────────────────────────────────

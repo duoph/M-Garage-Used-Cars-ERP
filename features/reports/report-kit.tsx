@@ -159,7 +159,7 @@ export function toSheet<T>(name: string, columns: ReportColumn<T>[], rows: T[], 
 }
 
 /** PDF prints the page (its print header carries the period and branch); Excel builds the sheets. */
-export function ExportButtons({ title, sheets }: { title: string; f?: Pick<ReportFilters, "rangeLabel" | "branchLabel">; sheets: () => SheetData[] }) {
+export function ExportButtons({ title, f, sheets }: { title: string; f?: Pick<ReportFilters, "rangeLabel" | "branchLabel">; sheets: () => SheetData[] }) {
   const { can } = useAuth();
   return (
     <div className="no-print flex gap-2">
@@ -169,7 +169,8 @@ export function ExportButtons({ title, sheets }: { title: string; f?: Pick<Repor
           variant="outline"
           size="sm"
           onClick={() => {
-            const file = `${title.replace(/\W+/g, "-").toLowerCase()}-${todayISO()}.xlsx`;
+            // The file name carries the period, e.g. "total-sales-report-01-10-2026-to-31-10-2026.xlsx".
+            const file = `${fileSlug(`${title} ${f?.rangeLabel ?? todayISO()}`)}.xlsx`;
             downloadFile(file, writeXlsx(sheets()) as BlobPart, XLSX_MIME);
             toast.success(`${title} exported`);
           }}
@@ -179,6 +180,11 @@ export function ExportButtons({ title, sheets }: { title: string; f?: Pick<Repor
       )}
     </div>
   );
+}
+
+/** "Total Sales Report 01-10-2026 to 31-10-2026" → "total-sales-report-01-10-2026-to-31-10-2026". */
+export function fileSlug(text: string): string {
+  return text.replace(/\W+/g, "-").replace(/^-|-$/g, "").toLowerCase();
 }
 
 /** Lines printed at the top of the PDF and Excel export. */

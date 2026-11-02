@@ -684,8 +684,10 @@ export interface BusinessSettings {
   updatedAt: ISODateTime;
 }
 
-export const INVOICE_TEMPLATES = ["classic", "modern", "compact", "bold"] as const;
+export const INVOICE_TEMPLATES = ["mgarage", "classic", "modern", "compact", "bold"] as const;
 export type InvoiceTemplateId = (typeof INVOICE_TEMPLATES)[number];
+/** Used until someone picks a template: the M Garage showroom format. */
+export const DEFAULT_INVOICE_TEMPLATE: InvoiceTemplateId = "mgarage";
 
 export interface ImageBlobRecord {
   key: string;

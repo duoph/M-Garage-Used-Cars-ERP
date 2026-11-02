@@ -75,6 +75,8 @@ export function ReportsPage() {
   ].map((b) => ({ label: b.label, count: stock.filter((s) => b.test(s.stockAgeDays)).length }));
 
   const stamp = todayISO();
+  // Period exports carry the selected dates in the file name; current stock carries today.
+  const span = range.from || range.to ? `${range.from ?? "start"}-to-${range.to ?? stamp}` : "all-time";
 
   return (
     <>
@@ -194,7 +196,7 @@ export function ReportsPage() {
               <ExportButton
                 disabled={sales.length === 0}
                 onClick={() => {
-                  downloadCsv(`sales-summary-${stamp}.csv`, sales, [
+                  downloadCsv(`sales-summary-${span}.csv`, sales, [
                     { header: "Sale Ref", value: (r) => r.sale.reference },
                     { header: "Date", value: (r) => r.sale.saleDate },
                     { header: "Vehicle", value: (r) => (r.vehicle ? `${r.vehicle.year} ${vehicleTitle(r.vehicle)}` : "") },
@@ -262,7 +264,7 @@ export function ReportsPage() {
                 <ExportButton
                   disabled={purchases.length === 0}
                   onClick={() => {
-                    downloadCsv(`purchase-summary-${stamp}.csv`, purchases, [
+                    downloadCsv(`purchase-summary-${span}.csv`, purchases, [
                       { header: "Reference", value: (p) => p.reference },
                       { header: "Date", value: (p) => p.purchaseDate },
                       { header: "Vehicle", value: (p) => { const v = idx.vehicles.get(p.vehicleId); return v ? `${v.year} ${vehicleTitle(v)}` : ""; } },
@@ -318,7 +320,7 @@ export function ReportsPage() {
                   <ExportButton
                     disabled={breakdown.length === 0}
                     onClick={() => {
-                      downloadCsv(`expense-summary-${stamp}.csv`, breakdown, [
+                      downloadCsv(`expense-summary-${span}.csv`, breakdown, [
                         { header: "Category", value: (b) => EXPENSE_CATEGORY_LABELS[b.category] },
                         { header: "Type", value: (b) => (b.vehicle ? "Vehicle" : "General") },
                         { header: "Amount (INR)", value: (b) => csvRupees(b.amountPaise) },
@@ -350,7 +352,7 @@ export function ReportsPage() {
                 <ExportButton
                   disabled={sales.length === 0}
                   onClick={() => {
-                    downloadCsv(`vehicle-profitability-${stamp}.csv`, sales, [
+                    downloadCsv(`vehicle-profitability-${span}.csv`, sales, [
                       { header: "Sale Ref", value: (r) => r.sale.reference },
                       { header: "Sale Date", value: (r) => r.sale.saleDate },
                       { header: "Vehicle", value: (r) => (r.vehicle ? `${r.vehicle.year} ${vehicleTitle(r.vehicle)}` : "") },

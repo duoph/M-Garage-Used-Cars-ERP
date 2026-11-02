@@ -9,7 +9,7 @@ import { reportError } from "@/hooks/use-commands";
 import { saleTotals } from "@/lib/calculations/finance";
 import { dealerService } from "@/lib/services/dealer-service";
 import { invoiceNumber } from "@/lib/utils/ids";
-import { INVOICE_TEMPLATES, type InvoiceTemplateId } from "@/types";
+import { DEFAULT_INVOICE_TEMPLATE, INVOICE_TEMPLATES, type InvoiceTemplateId } from "@/types";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DocumentNotFound, PrintPage, usePrintGate } from "@/features/documents/print-layout";
 import { INVOICE_TEMPLATE_INFO, InvoiceDocument } from "./invoice-templates";
@@ -34,7 +34,7 @@ export function InvoicePage() {
     .split(/(?<=\.)\s+/)
     .filter((sentence) => !/not a tax invoice/i.test(sentence))
     .join(" ");
-  const template = picked ?? ds.settings.invoiceTemplate ?? "classic";
+  const template = picked ?? ds.settings.invoiceTemplate ?? DEFAULT_INVOICE_TEMPLATE;
   const canSetDefault = can("settings.manage");
 
   async function choose(next: InvoiceTemplateId) {

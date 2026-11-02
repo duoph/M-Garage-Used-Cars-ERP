@@ -2,7 +2,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { ArrowLeftRight, BadgeIndianRupee, Banknote, ChevronRight, HandCoins, Landmark, Receipt, Scale, ShoppingCart, Undo2, Wallet, type LucideIcon } from "lucide-react";
+import { ArrowLeftRight, BadgeIndianRupee, Banknote, CalendarRange, ChevronRight, HandCoins, Landmark, Receipt, Scale, ShoppingCart, Undo2, Wallet, type LucideIcon } from "lucide-react";
 import { useData } from "@/components/providers/data-provider";
 import { useAuth } from "@/hooks/use-auth";
 import type { Permission } from "@/lib/permissions";
@@ -11,12 +11,15 @@ import {
   balanceSummary,
   bankSummary,
   cashInHandReport,
+  dateWiseReport,
   duesReport,
   paymentsReport,
   purchaseReport,
   purchaseReturnReport,
   salesReport,
   salesReturnReport,
+  type DateGrouping,
+  type DateWiseRow,
   type DueRow,
   type OutgoingRow,
 } from "@/lib/calculations/reports";
@@ -29,6 +32,7 @@ import type { SheetData } from "@/lib/utils/spreadsheet";
 import type { AccountKind } from "@/types";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { PageHeader } from "@/components/shared/page-header";
 import { DateField } from "@/components/shared/date-field";
 import { AccessDenied } from "@/components/shared/access-denied";
@@ -460,9 +464,87 @@ function BalanceSummaryReport() {
   );
 }
 
+// ─── j) Date-wise summary ──────────────────────────────────────────────────────
+
+const GROUPING_LABELS: Record<DateGrouping, string> = { day: "Day-wise", week: "Week-wise", month: "Month-wise" };
+
+function DateWiseReport() {
+  const { ds } = useData();
+  const { can } = useAuth();
+  const f = useReportFilters("this_month");
+  const [by, setBy] = React.useState<DateGrouping>("day");
+  const [skipEmpty, setSkipEmpty] = React.useState(false);
+  const r = dateWiseReport(ds, f.range, f.branchIds, by, skipEmpty);
+  const showCost = can("finance.viewCost");
+  const period = (x: DateWiseRow) => (x.key === x.end ? format(parseISO(x.key), "dd-MM-yyyy (EEE)") : `${date(x.key)} to ${date(x.end)}`);
+  const columns: ReportColumn<DateWiseRow>[] = [
+    { header: by === "day" ? "Date" : "Period", value: period, cell: (x) => <span className="font-medium whitespace-nowrap">{period(x)}</span>, width: 26 },
+    { header: "Cars sold", value: (x) => x.carsSold, cell: (x) => x.carsSold || "—", align: "right", total: String(r.carsSold), width: 10 },
+    { header: "Sales", value: (x) => x.salesPaise, money: true, total: r.salesPaise },
+    { header: "Sales returns", value: (x) => x.returnsPaise, money: true, total: r.returnsPaise },
+    ...(showCost
+      ? [
+          { header: "Cars bought", value: (x: DateWiseRow) => x.carsBought, cell: (x: DateWiseRow) => x.carsBought || "—", align: "right" as const, total: String(r.carsBought), width: 10 },
+          { header: "Purchases", value: (x: DateWiseRow) => x.purchasesPaise, money: true, total: r.purchasesPaise },
+        ]
+      : []),
+    { header: "Expenses", value: (x) => x.expensesPaise, money: true, total: r.expensesPaise },
+    { header: "Money in", value: (x) => x.inPaise, money: true, total: r.inPaise, className: "text-success" },
+    { header: "Money out", value: (x) => x.outPaise, money: true, total: r.outPaise, className: "text-destructive" },
+    {
+      header: "Net cash flow",
+      value: (x) => x.inPaise - x.outPaise,
+      money: true,
+      cell: (x) => (x.inPaise || x.outPaise ? <span className={x.inPaise - x.outPaise < 0 ? "text-destructive" : ""}>{formatINR(x.inPaise - x.outPaise)}</span> : "—"),
+      total: r.inPaise - r.outPaise,
+    },
+  ];
+  const title = `${GROUPING_LABELS[by]} Summary Report`;
+  return (
+    <ReportFrame
+      title={title}
+      f={f}
+      extra={
+        <>
+          <Select value={by} onValueChange={(v) => setBy(v as DateGrouping)}>
+            <SelectTrigger className="w-36" aria-label="Group by"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {(Object.keys(GROUPING_LABELS) as DateGrouping[]).map((g) => <SelectItem key={g} value={g}>{GROUPING_LABELS[g]}</SelectItem>)}
+            </SelectContent>
+          </Select>
+          <label className="flex items-center gap-2 text-[13px] text-muted-foreground">
+            <Switch checked={skipEmpty} onCheckedChange={setSkipEmpty} aria-label="Hide days with no activity" /> Hide empty {by === "day" ? "days" : `${by}s`}
+          </label>
+        </>
+      }
+      sheets={() => [toSheet(GROUPING_LABELS[by], columns, r.rows, reportHeader(title, f, ds.settings.showroomName))]}
+    >
+      <SummaryTiles
+        items={[
+          { label: "Sales", value: formatINR(r.salesPaise), tone: "pos" },
+          { label: showCost ? "Purchases" : "Expenses", value: formatINR(showCost ? r.purchasesPaise : r.expensesPaise) },
+          { label: "Net cash flow", value: formatINR(r.inPaise - r.outPaise), tone: r.inPaise - r.outPaise >= 0 ? "pos" : "neg" },
+          { label: "Days with activity", value: String(r.activeDays) },
+        ]}
+      />
+      <Section title={GROUPING_LABELS[by]} description={`${f.rangeLabel} · ${f.branchLabel}${by === "day" ? " · click a day to open its Day Book" : ""}`}>
+        <ReportTable
+          columns={columns}
+          rows={r.rows}
+          rowKey={(x) => x.key}
+          href={by === "day" ? (x) => `/accounts/day-book?date=${x.key}` : undefined}
+          empty="Nothing in this period."
+        />
+      </Section>
+      <p className="text-xs text-muted-foreground">Money in / out is every receipt and payment in cash and bank, excluding opening balances and transfers between the showroom&apos;s own accounts — the same totals as the Day Book.</p>
+    </ReportFrame>
+  );
+}
+
 // ─── Hub ───────────────────────────────────────────────────────────────────────
 
 export const MONEY_REPORTS: ReportDef[] = [
+  { slug: "date-wise", title: "Date-wise Summary Report", description: "Sales, purchases, expenses and money in / out for each day, week or month of any date range.", icon: CalendarRange, permission: "accounts.view", Component: DateWiseReport },
   { slug: "sales", title: "Total Sales Report", description: "Each sale with received, balance due and payment modes.", icon: Receipt, permission: "sales.viewAll", Component: SalesReport },
   { slug: "sales-returns", title: "Total Sales Return Report", description: "Returns, deductions, refunds paid and pending; net sales.", icon: Undo2, permission: "sales.viewAll", Component: SalesReturnsReport },
   { slug: "purchases", title: "Total Purchase Report", description: "Each purchase with paid and balance payable.", icon: ShoppingCart, permission: "finance.viewCost", Component: PurchasesReport },
