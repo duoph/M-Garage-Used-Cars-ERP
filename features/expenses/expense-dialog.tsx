@@ -40,7 +40,10 @@ function ExpenseDialogBody({ expenseId, vehicleId, onDone }: { expenseId: string
         paymentMethod: existing.paymentMethod,
         vehicleId: existing.vehicleId,
         notes: existing.notes,
-        accountId: existing.accountId ?? null,
+        // Older expenses saved without "Paid from" open unassigned so the account gets picked.
+        accountId: existing.accountId ?? "",
+        paymentReference: existing.paymentReference ?? "",
+        branchId: existing.branchId ?? null,
       }
     : vehicleId
       ? { vehicleId, category: "repair" }

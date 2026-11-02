@@ -28,6 +28,8 @@ export const VEHICLE_STATUS_LABELS: Record<VehicleStatus, string> = {
   available: "Available",
   reserved: "Reserved",
   sold: "Sold",
+  returned_inspection: "Returned – Inspection",
+  returned_to_supplier: "Returned to Supplier",
 };
 
 export const FUEL_LABELS: Record<FuelType, string> = {
@@ -92,6 +94,8 @@ export const EXPENSE_CATEGORY_LABELS: Record<ExpenseCategory, string> = {
 export const ACCOUNT_KIND_LABELS: Record<AccountKind, string> = {
   cash: "Cash in hand",
   bank: "Bank account",
+  owner: "Owner",
+  finance: "Loan due from lender",
 };
 
 export const VOUCHER_TYPE_LABELS: Record<VoucherType, string> = {

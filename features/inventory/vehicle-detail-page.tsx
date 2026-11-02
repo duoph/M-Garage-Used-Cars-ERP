@@ -2,7 +2,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { ArrowLeft, CarFront, ClipboardList, Pencil, Plus, Receipt, Undo2, Wallet } from "lucide-react";
+import { ArrowLeft, CarFront, CheckCircle2, ClipboardList, Pencil, Plus, Receipt, Undo2, Wallet } from "lucide-react";
 import { useData } from "@/components/providers/data-provider";
 import { useAuth, useCurrentUser } from "@/hooks/use-auth";
 import { useDialogStore } from "@/lib/store/dialogs";
@@ -95,6 +95,7 @@ function VehicleDetail({ view }: { view: VehicleView }) {
             {a.canRelease && <Button variant="outline" onClick={a.release}><Undo2 /> Release</Button>}
             {a.canReserve && <Button variant="outline" onClick={a.reserve}><ClipboardList /> Reserve</Button>}
             {a.canSell && <Button onClick={a.sell}><Receipt /> {view.reservation ? "Complete sale" : "Sell"}</Button>}
+            {a.canBackToStock && <Button onClick={a.backToStock}><CheckCircle2 /> Inspected — back to stock</Button>}
             {a.canViewSale && <Button variant="outline" onClick={a.viewSale}><Receipt /> View sale</Button>}
           </div>
         </div>

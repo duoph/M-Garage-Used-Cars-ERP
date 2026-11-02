@@ -29,7 +29,7 @@ export function MoneyActions() {
   if (!can("accounts.manage")) return null;
   return (
     <>
-      <Button variant="outline" onClick={() => openVoucher({ type: "contra" })}><ArrowLeftRight /> <span className="hidden sm:inline">Transfer</span></Button>
+      <Button variant="outline" onClick={() => openVoucher({ type: "contra" })}><ArrowLeftRight /> <span className="hidden sm:inline">Cash transfer</span></Button>
       <Button variant="outline" onClick={() => openVoucher({ type: "payment" })}><ArrowUpRight className="text-destructive" /> Pay</Button>
       <Button onClick={() => openVoucher({ type: "receipt" })}><ArrowDownLeft /> Receive</Button>
     </>
@@ -48,6 +48,8 @@ export function CashBankPage() {
   const canManage = can("accounts.manage");
 
   const visible = summaries.filter((s) => !s.account.archived || s.balancePaise !== 0 || s.account.id === selected);
+  const ownerPaise = sumPaise(summaries.filter((s) => s.account.kind === "owner").map((s) => s.balancePaise));
+  const loansPaise = sumPaise(summaries.filter((s) => s.account.kind === "finance").map((s) => s.balancePaise));
   const cash = sumPaise(summaries.filter((s) => s.account.kind === "cash").map((s) => s.balancePaise));
   const bank = sumPaise(summaries.filter((s) => s.account.kind === "bank").map((s) => s.balancePaise));
   const today = todayISO();
@@ -72,8 +74,8 @@ export function CashBankPage() {
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 lg:gap-4">
         <StatCard label="Cash in hand" value={formatINRCompact(cash)} tone={cash < 0 ? "danger" : "neutral"} hint={formatINR(cash)} />
         <StatCard label="In bank" value={formatINRCompact(bank)} tone={bank < 0 ? "danger" : "neutral"} hint={formatINR(bank)} />
-        <StatCard label="Received today" value={formatINRCompact(todayIn)} tone="success" hint={`${todayEntries.filter((e) => e.direction === "in").length} entries`} />
-        <StatCard label="Paid today" value={formatINRCompact(todayOut)} tone={todayOut ? "danger" : "neutral"} hint={`${todayEntries.filter((e) => e.direction === "out").length} entries`} />
+        <StatCard label="Loans due from lenders" value={formatINRCompact(loansPaise)} hint={`Handed to owner ${formatINR(ownerPaise)}`} />
+        <StatCard label="Today" value={`+${formatINRCompact(todayIn)} / −${formatINRCompact(todayOut)}`} tone="success" hint={`${todayEntries.length} entries`} />
       </div>
 
       <div className="mt-4 flex items-center justify-between gap-2">
@@ -86,6 +88,7 @@ export function CashBankPage() {
             <DropdownMenuContent align="end">
               <DropdownMenuItem onSelect={() => setEditing({ kind: "bank" })}>Bank account</DropdownMenuItem>
               <DropdownMenuItem onSelect={() => setEditing({ kind: "cash" })}>Cash account / cash receiver</DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => setEditing({ kind: "owner" })}>Owner / partner account</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         )}
@@ -110,7 +113,11 @@ export function CashBankPage() {
               subtitle={
                 s.account.kind === "bank"
                   ? [s.account.bankName, maskedNumber(s.account.accountNumber)].filter(Boolean).join(" · ") || "Bank account"
-                  : custodian ? `Held by ${custodian}` : "Cash"
+                  : s.account.kind === "owner"
+                    ? "Cash handed to the owner"
+                    : s.account.kind === "finance"
+                      ? "Loans still due from this lender"
+                      : [ds.branches.find((b) => b.id === s.account.branchId)?.name, custodian && `Held by ${custodian}`].filter(Boolean).join(" · ") || "Cash"
               }
               balance={s.balancePaise}
               onEdit={canManage ? () => setEditing({ account: s.account, kind: s.account.kind }) : undefined}

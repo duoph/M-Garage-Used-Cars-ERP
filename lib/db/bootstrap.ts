@@ -1,5 +1,6 @@
 import type { DealerDatabase } from "@/lib/db/database";
 import type { BusinessSettings, MoneyAccount, User } from "@/types";
+import { MAIN_BRANCH_ID, mainBranch, migrateAccounting, ownerAccount } from "@/lib/db/migrate";
 
 /** The first account in a new showroom. Rename it and add staff from the Staff page. */
 export const OWNER_USER_ID = "u-owner";
@@ -39,20 +40,22 @@ export function defaultSettings(): BusinessSettings {
 
 function ownerUser(): User {
   const ts = new Date().toISOString();
-  return { id: OWNER_USER_ID, name: "Owner", email: "", phone: "", role: "admin", status: "active", createdAt: ts, updatedAt: ts };
+  return { id: OWNER_USER_ID, name: "Owner", email: "", phone: "", role: "admin", status: "active", branchId: MAIN_BRANCH_ID, createdAt: ts, updatedAt: ts };
 }
 
-/** Every showroom starts with a cash drawer and a bank account, so money always has somewhere to land. */
+/** Every showroom starts with a cash drawer, a bank account and the owner, so money always has somewhere to land. */
 export function defaultAccounts(): MoneyAccount[] {
   const ts = new Date().toISOString();
   const base = { bankName: "", accountNumber: "", ifsc: "", upiId: "", custodianId: null, openingBalancePaise: 0, openingDate: ts.slice(0, 10), isDefault: true, archived: false, notes: "", createdAt: ts, updatedAt: ts };
   return [
-    { ...base, id: "acc-cash", name: "Cash in hand", kind: "cash" },
-    { ...base, id: "acc-bank", name: "Main bank account", kind: "bank" },
+    { ...base, id: "acc-cash", name: "Cash in hand", kind: "cash", branchId: MAIN_BRANCH_ID },
+    { ...base, id: "acc-bank", name: "Main bank account", kind: "bank", branchId: null },
+    ownerAccount(),
   ];
 }
 
 async function ensureDefaultAccounts(db: DealerDatabase): Promise<void> {
+  if ((await db.branches.count()) === 0) await db.branches.add(mainBranch());
   if ((await db.accounts.count()) === 0) await db.accounts.bulkAdd(defaultAccounts());
 }
 
@@ -84,6 +87,7 @@ export async function ensureInitialized(db: DealerDatabase): Promise<void> {
   if (marker?.value === FRESH_START_VERSION) {
     await applyShowroomBrand(db);
     await ensureDefaultAccounts(db);
+    await migrateAccounting(db);
     return;
   }
   await db.transaction("rw", db.tables, async () => {
@@ -99,4 +103,5 @@ export async function ensureInitialized(db: DealerDatabase): Promise<void> {
     await applyShowroomBrand(db);
     await markInitialized(db);
   });
+  await migrateAccounting(db);
 }

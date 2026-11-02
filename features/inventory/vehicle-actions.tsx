@@ -1,7 +1,7 @@
 "use client";
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { ClipboardList, Eye, MoreHorizontal, Pencil, Receipt, Undo2, Wallet } from "lucide-react";
+import { CheckCircle2, ClipboardList, Eye, MoreHorizontal, Pencil, Receipt, Undo2, Wallet } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth, useCurrentUser } from "@/hooks/use-auth";
 import { useDialogStore } from "@/lib/store/dialogs";
@@ -30,7 +30,8 @@ export function useVehicleActions(view: VehicleView) {
   const actions = {
     canEdit: can("inventory.edit") && !archived,
     canReserve: can("sales.create") && v.status === "available" && !archived,
-    canSell: can("sales.create") && v.status !== "sold" && !archived,
+    canSell: can("sales.create") && (v.status === "available" || v.status === "reserved") && !archived,
+    canBackToStock: can("inventory.edit") && v.status === "returned_inspection" && !archived,
     canRelease: can("sales.create") && v.status === "reserved" && !!view.reservation,
     canExpense: can("expenses.manage") && !archived,
     canViewSale: can("sales.view") && !!view.sale && (can("sales.viewAll") || view.sale.soldBy === user.id),
@@ -41,6 +42,14 @@ export function useVehicleActions(view: VehicleView) {
       router.push(`/sales/new?vehicle=${v.id}${view.reservation ? `&reservation=${view.reservation.id}` : ""}`),
     expense: () => openExpense({ vehicleId: v.id }),
     viewSale: () => view.sale && router.push(`/sales/${view.sale.id}`),
+    backToStock: async () => {
+      try {
+        await dealerService.backToStock(user, v.id);
+        toast.success("Car passed inspection and is back in stock");
+      } catch (e) {
+        reportError(e);
+      }
+    },
   };
 
   const dialogs = (
@@ -99,7 +108,12 @@ export function VehicleActionsMenu({ view, align = "end" }: { view: VehicleView;
               <Pencil /> Edit vehicle
             </DropdownMenuItem>
           )}
-          {(a.canReserve || a.canSell || a.canRelease || a.canViewSale) && <DropdownMenuSeparator />}
+          {(a.canReserve || a.canSell || a.canRelease || a.canViewSale || a.canBackToStock) && <DropdownMenuSeparator />}
+          {a.canBackToStock && (
+            <DropdownMenuItem onSelect={a.backToStock}>
+              <CheckCircle2 /> Inspected — back to stock
+            </DropdownMenuItem>
+          )}
           {a.canReserve && (
             <DropdownMenuItem onSelect={a.reserve}>
               <ClipboardList /> Reserve

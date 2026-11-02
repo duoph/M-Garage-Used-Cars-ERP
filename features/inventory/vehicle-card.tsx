@@ -9,7 +9,7 @@ import { FUEL_LABELS, TRANSMISSION_LABELS, VEHICLE_STATUS_LABELS, formatKm, vehi
 import { VehicleImage } from "@/components/shared/vehicle-image";
 import { VehicleActionsMenu } from "./vehicle-actions";
 
-const STATUS_DOT = { available: "bg-success", reserved: "bg-warning", sold: "bg-[#98a2b3]" } as const;
+const STATUS_DOT = { available: "bg-success", reserved: "bg-warning", sold: "bg-[#98a2b3]", returned_inspection: "bg-[#2948b8]", returned_to_supplier: "bg-destructive" } as const;
 
 /**
  * Photo-first card: status and photo count over the image, then name, one spec line, plate and stock

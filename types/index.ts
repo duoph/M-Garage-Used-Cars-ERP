@@ -29,7 +29,8 @@ export type Role = (typeof ROLES)[number];
 export const USER_STATUSES = ["active", "inactive"] as const;
 export type UserStatus = (typeof USER_STATUSES)[number];
 
-export const VEHICLE_STATUSES = ["available", "reserved", "sold"] as const;
+/** `returned_inspection`: handed back by a buyer and waiting to be checked. `returned_to_supplier`: sent back to its seller. */
+export const VEHICLE_STATUSES = ["available", "reserved", "sold", "returned_inspection", "returned_to_supplier"] as const;
 export type VehicleStatus = (typeof VEHICLE_STATUSES)[number];
 
 export const FUEL_TYPES = ["petrol", "diesel", "cng", "electric", "hybrid"] as const;
@@ -88,6 +89,10 @@ export const ENTITY_TYPES = [
   "account",
   "voucher",
   "document",
+  "branch",
+  "sales_return",
+  "purchase_return",
+  "day_close",
 ] as const;
 export type EntityType = (typeof ENTITY_TYPES)[number];
 
@@ -124,6 +129,16 @@ export const ACTIVITY_ACTIONS = [
   "voucher.cancelled",
   "document.uploaded",
   "document.removed",
+  "branch.created",
+  "branch.updated",
+  "payment.finance_settled",
+  "purchase.payment_recorded",
+  "sales_return.created",
+  "purchase_return.created",
+  "refund.recorded",
+  "vehicle.back_to_stock",
+  "day.closed",
+  "day.reopened",
 ] as const;
 export type ActivityAction = (typeof ACTIVITY_ACTIONS)[number];
 
@@ -144,6 +159,21 @@ export interface User extends Timestamps {
    * Ignored for admin accounts, which always have full access.
    */
   permissions?: string[] | null;
+  /** Home branch. Absent on accounts created before branches existed (they belong to the main branch). */
+  branchId?: ID | null;
+  /** Null/absent = the account type's default: admins and managers see every branch, everyone else only their own. */
+  allBranches?: boolean | null;
+}
+
+/** A showroom location with its own cash in hand. */
+export interface Branch extends Timestamps {
+  id: ID;
+  name: string;
+  /** Short code printed on documents, e.g. KOC. */
+  code: string;
+  address: string;
+  phone: string;
+  archived: boolean;
 }
 
 export interface Vehicle extends Timestamps {
@@ -171,6 +201,8 @@ export interface Vehicle extends Timestamps {
   archivedAt: ISODateTime | null;
   /** Insurance, pollution, RC validity and hypothecation. Absent on cars added before papers were tracked. */
   papers?: VehiclePapers;
+  /** Branch the car is stocked at. */
+  branchId?: ID | null;
 }
 
 export const INSURANCE_TYPES = ["comprehensive", "third_party", "zero_dep", "none"] as const;
@@ -215,6 +247,32 @@ export interface Purchase extends Timestamps {
   createdBy: ID;
   cancelledAt: ISODateTime | null;
   cancelReason: string;
+  branchId?: ID | null;
+  /** Σ (return amount − deduction) of purchase returns. Absent = 0. */
+  returnedPaise?: Paise;
+  /** Refunds the seller has paid back on purchase returns. */
+  refundReceivedPaise?: Paise;
+  returnStatus?: ReturnStatus;
+}
+
+export const RETURN_STATUSES = ["none", "partial", "returned"] as const;
+export type ReturnStatus = (typeof RETURN_STATUSES)[number];
+
+/** One payment line to a seller. A purchase may be paid in several ways and on several days. */
+export interface PurchasePayment extends Timestamps {
+  id: ID;
+  purchaseId: ID;
+  /** PPY-2026-0001. Lines entered together share a number. */
+  number: string;
+  date: ISODate;
+  method: PaymentMethod;
+  amountPaise: Paise;
+  /** Account the money was paid from. */
+  accountId: ID;
+  reference: string;
+  notes: string;
+  kind: "at_purchase" | "payment";
+  recordedBy: ID;
 }
 
 export interface VehicleImage extends Timestamps {
@@ -271,6 +329,14 @@ export interface Sale extends Timestamps {
   soldBy: ID;
   cancelledAt: ISODateTime | null;
   cancelReason: string;
+  branchId?: ID | null;
+  /** Σ (return amount − deduction) of sales returns. Absent = 0. */
+  returnedPaise?: Paise;
+  /** Refunds paid back to the buyer on sales returns. */
+  refundedPaise?: Paise;
+  /** Loan amounts taken off a lender's receivable by sales returns. */
+  financeAdjustedPaise?: Paise;
+  returnStatus?: ReturnStatus;
 }
 
 export interface SalePayment extends Timestamps {
@@ -289,6 +355,16 @@ export interface SalePayment extends Timestamps {
   accountId?: ID | null;
   /** Staff member who physically received the money (the cash receiver). Absent = whoever recorded it. */
   receivedBy?: ID | null;
+  /** Finance / loan lines: the lender and their loan number. */
+  lenderName?: string;
+  loanReference?: string;
+  /** Finance lines: part of the loan cancelled by a sales return instead of being paid out. */
+  adjustedPaise?: Paise;
+  /** Finance lines: when the lender paid, and into which account. */
+  settledOn?: ISODate | null;
+  settledAccountId?: ID | null;
+  settledReference?: string;
+  settledBy?: ID | null;
 }
 
 export interface Expense extends Timestamps {
@@ -303,13 +379,17 @@ export interface Expense extends Timestamps {
   paymentMethod: PaymentMethod;
   notes: string;
   createdBy: ID;
-  /** Cash or bank account the expense was paid from. Absent = the default account for the payment method. */
+  /** Cash or bank account the expense was paid from. Absent on older expenses, which show as Unassigned. */
   accountId?: ID | null;
+  /** Transaction ID / cheque number. */
+  paymentReference?: string;
+  branchId?: ID | null;
 }
 
 // ─── Accounting ────────────────────────────────────────────────────────────────
 
-export const ACCOUNT_KINDS = ["cash", "bank"] as const;
+/** Cash in hand (per branch), bank accounts, money handed to the owner, and loans still due from lenders. */
+export const ACCOUNT_KINDS = ["cash", "bank", "owner", "finance"] as const;
 export type AccountKind = (typeof ACCOUNT_KINDS)[number];
 
 /** A cash drawer or bank account money moves in and out of. */
@@ -330,6 +410,8 @@ export interface MoneyAccount extends Timestamps {
   isDefault: boolean;
   archived: boolean;
   notes: string;
+  /** Cash accounts belong to a branch. Bank, owner and lender accounts are shared (null). */
+  branchId?: ID | null;
 }
 
 export const VOUCHER_TYPES = ["receipt", "payment", "contra"] as const;
@@ -392,6 +474,127 @@ export interface Voucher extends Timestamps {
   createdBy: ID;
   cancelledAt: ISODateTime | null;
   cancelReason: string;
+  branchId?: ID | null;
+}
+
+// ─── Returns ───────────────────────────────────────────────────────────────────
+
+/** A car (or part of its price) handed back by the buyer. Numbered as a credit note. */
+export interface SalesReturn extends Timestamps {
+  id: ID;
+  /** CN-2026-0001. */
+  number: string;
+  saleId: ID;
+  customerId: ID;
+  vehicleId: ID;
+  branchId: ID | null;
+  date: ISODate;
+  returnAmountPaise: Paise;
+  /** Charges kept by the showroom. */
+  deductionPaise: Paise;
+  /** Finance line whose pending loan is reduced instead of refunding the buyer. */
+  financePaymentId: ID | null;
+  financeAdjustmentPaise: Paise;
+  /** What the showroom owes the buyer because of this return. */
+  refundDuePaise: Paise;
+  vehicleReturned: boolean;
+  reason: string;
+  notes: string;
+  createdBy: ID;
+}
+
+/** A car sent back to its seller. Numbered as a debit note. */
+export interface PurchaseReturn extends Timestamps {
+  id: ID;
+  /** DN-2026-0001. */
+  number: string;
+  purchaseId: ID;
+  vehicleId: ID;
+  branchId: ID | null;
+  sellerName: string;
+  date: ISODate;
+  returnAmountPaise: Paise;
+  /** Charges the seller keeps. */
+  deductionPaise: Paise;
+  /** What the seller owes back because of this return. */
+  refundDuePaise: Paise;
+  reason: string;
+  notes: string;
+  createdBy: ID;
+}
+
+/** Money paid back to a buyer (sales return) or received back from a seller (purchase return). */
+export interface ReturnRefund extends Timestamps {
+  id: ID;
+  returnType: "sales" | "purchase";
+  returnId: ID;
+  /** RF-2026-0001. Lines entered together share a number. */
+  number: string;
+  date: ISODate;
+  method: PaymentMethod;
+  amountPaise: Paise;
+  accountId: ID;
+  reference: string;
+  recordedBy: ID;
+}
+
+// ─── Ledger ────────────────────────────────────────────────────────────────────
+
+export type LedgerSource =
+  | "opening"
+  | "sale_payment"
+  | "booking"
+  | "finance_settlement"
+  | "purchase_payment"
+  | "expense"
+  | "voucher"
+  | "sales_refund"
+  | "finance_adjustment"
+  | "purchase_refund";
+
+/**
+ * One movement of money into or out of one account — the single source of truth for balances, the day
+ * book and every money report. Rows are written by the business commands in the same transaction as the
+ * record that caused them. `key` is stable per cause, so a corrected record re-posts in place.
+ */
+export interface LedgerEntry {
+  key: string;
+  source: LedgerSource;
+  date: ISODate;
+  /** Tie-breaker within a day: when the record was entered. */
+  createdAt: string;
+  accountId: ID;
+  branchId: ID | null;
+  direction: "in" | "out";
+  amountPaise: Paise;
+  /** Receipt / voucher / reference number. */
+  number: string;
+  /** "Sale receipt", "Payment to seller", "Rent"… */
+  typeLabel: string;
+  party: string;
+  particulars: string;
+  method: PaymentMethod | null;
+  /** Staff member who handled the money. */
+  handledBy: ID | null;
+  /** Staff member who entered it. */
+  enteredBy: ID | null;
+  href: string | null;
+  /** Vouchers only, so they can be printed or cancelled. */
+  voucherId?: ID;
+  /** Money moved between the showroom's own accounts, not received or spent. */
+  transfer?: boolean;
+}
+
+/** A counted and locked day for one branch. */
+export interface DayClose extends Timestamps {
+  id: ID;
+  branchId: ID;
+  date: ISODate;
+  accounts: { accountId: ID; systemPaise: Paise; countedPaise: Paise }[];
+  /** Counted − system cash across the branch's cash accounts. */
+  differencePaise: Paise;
+  notes: string;
+  closedBy: ID;
 }
 
 // ─── Documents ─────────────────────────────────────────────────────────────────
@@ -453,7 +656,7 @@ export interface ActivityMetadata {
   sensitive?: boolean;
 }
 
-export type DateFormatPreference = "dd MMM yyyy" | "dd/MM/yyyy" | "yyyy-MM-dd";
+export type DateFormatPreference = "dd MMM yyyy" | "dd-MM-yyyy" | "dd/MM/yyyy" | "yyyy-MM-dd";
 export type InventoryViewPreference = "grid" | "table";
 
 export interface BusinessSettings {

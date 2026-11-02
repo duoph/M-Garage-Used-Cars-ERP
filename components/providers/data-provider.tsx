@@ -4,12 +4,20 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { getDb } from "@/lib/db/database";
 import { ensureInitialized } from "@/lib/db/bootstrap";
 import { indexDataset, type Dataset, type DatasetIndex } from "@/lib/calculations/selectors";
+import { scopeDataset } from "@/lib/calculations/branches";
+import { readDataset } from "@/lib/db/dataset";
+import { branchScope } from "@/lib/permissions";
+import { useSessionStore } from "@/lib/store/session";
+import type { MoneyAccount } from "@/types";
 import { setPreferredDateFormat } from "@/lib/utils/dates";
 import { BootScreen } from "@/components/shared/boot-screen";
 
 interface DataContextValue {
+  /** What the signed-in person may see: limited to their branch unless they see every branch. */
   ds: Dataset;
   idx: DatasetIndex;
+  /** Every account in every branch, for picking the other side of a branch-to-branch transfer. */
+  allAccounts: MoneyAccount[];
   /** Forces a fresh read from IndexedDB (data is otherwise live-updating). */
   reload: () => void;
 }
@@ -20,34 +28,6 @@ let initPromise: Promise<void> | null = null;
 function initOnce() {
   initPromise ??= ensureInitialized(getDb());
   return initPromise;
-}
-
-async function loadDataset(): Promise<Dataset | null> {
-  const db = getDb();
-  return db.transaction(
-    "r",
-    [db.users, db.vehicles, db.purchases, db.vehicleImages, db.customers, db.reservations, db.sales, db.salePayments, db.expenses, db.accounts, db.vouchers, db.documents, db.activity, db.settings],
-    async () => {
-      const [users, vehicles, purchases, images, customers, reservations, sales, payments, expenses, accounts, vouchers, documents, activity, settings] = await Promise.all([
-        db.users.toArray(),
-        db.vehicles.toArray(),
-        db.purchases.toArray(),
-        db.vehicleImages.toArray(),
-        db.customers.toArray(),
-        db.reservations.toArray(),
-        db.sales.toArray(),
-        db.salePayments.toArray(),
-        db.expenses.toArray(),
-        db.accounts.toArray(),
-        db.vouchers.toArray(),
-        db.documents.toArray(),
-        db.activity.orderBy("timestamp").reverse().toArray(),
-        db.settings.get("business"),
-      ]);
-      if (!settings) return null;
-      return { users, vehicles, purchases, images, customers, reservations, sales, payments, expenses, accounts, vouchers, documents, activity, settings };
-    },
-  );
 }
 
 export function DataProvider({ children }: { children: React.ReactNode }) {
@@ -66,10 +46,18 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const [nonce, setNonce] = React.useState(0);
-  const ds = useLiveQuery(() => (seeded ? loadDataset() : Promise.resolve(undefined)), [seeded, nonce]);
+  const raw = useLiveQuery(() => (seeded ? readDataset(getDb()) : Promise.resolve(undefined)), [seeded, nonce]);
   const reload = React.useCallback(() => setNonce((n) => n + 1), []);
+  const userId = useSessionStore((s) => s.userId);
+  const user = raw?.users.find((u) => u.id === userId);
+  const scopeKey = raw ? JSON.stringify(branchScope(user)) : "";
 
-  const value = React.useMemo(() => (ds ? { ds, idx: indexDataset(ds), reload } : null), [ds, reload]);
+  const value = React.useMemo(() => {
+    if (!raw) return null;
+    const ds = scopeDataset(raw, JSON.parse(scopeKey) as string[] | null);
+    return { ds, idx: indexDataset(ds), allAccounts: raw.accounts, reload };
+  }, [raw, scopeKey, reload]);
+  const ds = value?.ds;
 
   React.useEffect(() => {
     if (ds) setPreferredDateFormat(ds.settings.dateFormat);

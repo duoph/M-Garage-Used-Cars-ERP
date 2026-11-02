@@ -31,7 +31,7 @@ const SALE_HEAD = "sale_payment";
 const TYPES: { type: VoucherType; label: string; icon: typeof ArrowDownLeft; hint: string }[] = [
   { type: "receipt", label: "Receipt", icon: ArrowDownLeft, hint: "Money in" },
   { type: "payment", label: "Payment", icon: ArrowUpRight, hint: "Money out" },
-  { type: "contra", label: "Contra", icon: ArrowLeftRight, hint: "Cash ⇄ bank" },
+  { type: "contra", label: "Cash transfer", icon: ArrowLeftRight, hint: "Cash ⇄ bank ⇄ owner" },
 ];
 
 /** Single global voucher dialog, opened via `useDialogStore().openVoucher(...)`. */
@@ -308,11 +308,18 @@ function VoucherForm({
             </Field>
           )}
           <Field label={type === "receipt" ? "Deposit into" : type === "payment" ? "Pay from" : "From account"} htmlFor="v-account" error={errors.accountId} required>
-            <AccountSelect id="v-account" value={effectiveAccount} onChange={setAccountId} exclude={type === "contra" ? toAccountId : undefined} invalid={!!errors.accountId} />
+            <AccountSelect
+              id="v-account"
+              value={effectiveAccount}
+              onChange={setAccountId}
+              exclude={type === "contra" ? toAccountId : undefined}
+              kinds={type === "contra" ? ["cash", "bank", "owner"] : ["cash", "bank"]}
+              invalid={!!errors.accountId}
+            />
           </Field>
           {type === "contra" && (
-            <Field label="To account" htmlFor="v-to" error={errors.toAccountId} required>
-              <AccountSelect id="v-to" value={toAccountId} onChange={setToAccountId} exclude={effectiveAccount} invalid={!!errors.toAccountId} />
+            <Field label="To account" htmlFor="v-to" error={errors.toAccountId} required hint="Another branch's cash, a bank (deposit), or the owner.">
+              <AccountSelect id="v-to" value={toAccountId} onChange={setToAccountId} exclude={effectiveAccount} kinds={["cash", "bank", "owner"]} everyBranch invalid={!!errors.toAccountId} />
             </Field>
           )}
 

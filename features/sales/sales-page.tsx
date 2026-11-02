@@ -2,7 +2,8 @@
 import * as React from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { Download, Plus, Receipt, SearchX } from "lucide-react";
+import { Download, Plus, Receipt, SearchX, Undo2 } from "lucide-react";
+import { ReturnStatusBadge } from "@/features/returns/shared";
 import { toast } from "sonner";
 import { useData } from "@/components/providers/data-provider";
 import { useAuth, useCurrentUser } from "@/hooks/use-auth";
@@ -94,6 +95,7 @@ export function SalesPage() {
         description={viewAll ? "All vehicle sales, payments and balances." : "Sales you have recorded."}
         actions={
           <>
+            <Button variant="outline" asChild><Link href="/sales/returns"><Undo2 /> Returns</Link></Button>
             {can("data.export") && (
               <Button variant="outline" onClick={exportCsv} disabled={rows.length === 0}><Download /> Export</Button>
             )}
@@ -157,7 +159,9 @@ export function SalesPage() {
               {paged.visible.map((r) => {
                 const done = r.sale.status === "completed";
                 const due = done ? r.totals.balancePaise : 0;
-                const badge = done ? <PaymentStatusBadge status={r.totals.paymentStatus} /> : <SaleStatusBadge status={r.sale.status} />;
+                const badge = done ? (
+                  <span className="inline-flex gap-1"><PaymentStatusBadge status={r.totals.paymentStatus} /><ReturnStatusBadge status={r.sale.returnStatus} /></span>
+                ) : <SaleStatusBadge status={r.sale.status} />;
                 return (
                   <ListRow
                     key={r.sale.id}

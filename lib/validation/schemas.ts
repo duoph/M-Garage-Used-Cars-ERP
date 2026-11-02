@@ -109,22 +109,86 @@ export const sellerSchema = z.object({
   sellerNotes: optionalText(500),
 });
 
+// ─── Payment lines ─────────────────────────────────────────────────────────────
+
+/** Modes a refund can be paid or received in. */
+export const REFUND_METHODS = ["cash", "upi", "bank_transfer", "cheque"] as const;
+
+/** One way part of an amount was paid: mode, amount, account and reference (plus the lender for loans). */
+export const paymentLineSchema = z
+  .object({
+    method: z.enum(PAYMENT_METHODS, { error: "Select a payment mode" }),
+    amountPaise: positivePaise("Amount"),
+    /** Null = the default account for the mode (cash → the branch's cash in hand). Loans go to the lender's account. */
+    accountId: z.string().nullable().optional(),
+    reference: optionalText(60),
+    lenderName: optionalText(80),
+    loanReference: optionalText(60),
+  })
+  .superRefine((l, ctx) => {
+    if (l.method === "finance" && l.lenderName.length < 2)
+      ctx.addIssue({ code: "custom", path: ["lenderName"], message: "Name the finance company or bank giving the loan" });
+  });
+export type PaymentLineInput = z.infer<typeof paymentLineSchema>;
+
+export const lineTotal = (lines: readonly { amountPaise: number }[]) => lines.reduce((s, l) => s + l.amountPaise, 0);
+
+export const refundLineSchema = paymentLineSchema.refine((l) => (REFUND_METHODS as readonly string[]).includes(l.method), {
+  path: ["method"],
+  message: "Refunds are paid by cash, UPI, bank transfer or cheque",
+});
+
+/** Payment lines for a later receipt ("Receive Payment") or seller payment. */
+export const makeReceiveSchema = (balancePaise: number) =>
+  z
+    .object({
+      date: pastOrTodayDate,
+      lines: z.array(paymentLineSchema).min(1, "Add at least one payment line").max(10),
+      notes: optionalText(300),
+      receivedBy: z.string().nullable().optional(),
+    })
+    .superRefine((v, ctx) => {
+      if (lineTotal(v.lines) > balancePaise)
+        ctx.addIssue({ code: "custom", path: ["lines"], message: "Payments exceed the balance due" });
+    });
+export type ReceiveInput = z.infer<ReturnType<typeof makeReceiveSchema>>;
+
 export const purchaseInfoSchema = z.object({
   purchaseDate: pastOrTodayDate,
   purchasePricePaise: positivePaise("Purchase price"),
+  /** Older single payment. When `payments` is given, the amount paid is their total. */
   amountPaidPaise: paise("Amount paid"),
   askingPricePaise: positivePaise("Asking price"),
   paymentMethod: z.enum(PAYMENT_METHODS, { error: "Select a payment method" }),
   paymentReference: optionalText(60),
   purchaseNotes: optionalText(1000),
+  /** "Paid from" lines. Loans don't apply to purchases. */
+  payments: z.array(paymentLineSchema).max(10).optional(),
+  branchId: z.string().nullable().optional(),
 });
+
+/** The payment lines of a purchase or sale input, converting the older single-payment fields. */
+export function linesOf(v: {
+  payments?: PaymentLineInput[];
+  amountPaidPaise?: number;
+  amountReceivedPaise?: number;
+  paymentMethod?: PaymentLineInput["method"];
+  paymentReference?: string;
+}): PaymentLineInput[] {
+  if (v.payments) return v.payments;
+  const amount = v.amountPaidPaise ?? v.amountReceivedPaise ?? 0;
+  if (amount <= 0) return [];
+  return [{ method: v.paymentMethod ?? "cash", amountPaise: amount, accountId: null, reference: v.paymentReference ?? "", lenderName: "", loanReference: "" }];
+}
 
 export const purchaseFormSchema = vehicleDetailsSchema
   .extend(sellerSchema.shape)
   .extend(purchaseInfoSchema.shape)
   .superRefine((v, ctx) => {
-    if (v.amountPaidPaise > v.purchasePricePaise)
-      ctx.addIssue({ code: "custom", path: ["amountPaidPaise"], message: "Amount paid cannot exceed the purchase price" });
+    if (lineTotal(linesOf(v)) > v.purchasePricePaise)
+      ctx.addIssue({ code: "custom", path: [v.payments ? "payments" : "amountPaidPaise"], message: "Amount paid cannot exceed the purchase price" });
+    if (v.payments?.some((l) => l.method === "finance"))
+      ctx.addIssue({ code: "custom", path: ["payments"], message: "Pay sellers by cash, UPI, bank transfer, cheque or card" });
   });
 export type PurchaseFormInput = z.infer<typeof purchaseFormSchema>;
 
@@ -167,9 +231,12 @@ export const makeSaleSchema = (bookingPaise: number) =>
       reservationId: z.string().nullable(),
       saleDate: pastOrTodayDate,
       salePricePaise: positivePaise("Sale price"),
-      amountReceivedPaise: paise("Amount received"),
-      paymentMethod: z.enum(PAYMENT_METHODS),
-      paymentReference: optionalText(60),
+      /** Payment lines (cash + UPI + loan…). The single-payment fields below are the older form of one line. */
+      payments: z.array(paymentLineSchema).max(10).optional(),
+      amountReceivedPaise: paise("Amount received").optional(),
+      paymentMethod: z.enum(PAYMENT_METHODS).optional(),
+      paymentReference: optionalText(60).optional(),
+      branchId: z.string().nullable().optional(),
       notes: optionalText(1000),
     })
     .superRefine((v, ctx) => {
@@ -179,11 +246,11 @@ export const makeSaleSchema = (bookingPaise: number) =>
           path: ["salePricePaise"],
           message: "Sale price cannot be lower than the booking amount already received",
         });
-      if (bookingPaise + v.amountReceivedPaise > v.salePricePaise)
+      if (bookingPaise + lineTotal(linesOf(v)) > v.salePricePaise)
         ctx.addIssue({
           code: "custom",
-          path: ["amountReceivedPaise"],
-          message: "Total received would exceed the sale price",
+          path: [v.payments ? "payments" : "amountReceivedPaise"],
+          message: "Payments cannot exceed the sale total",
         });
     });
 export type SaleInput = z.infer<ReturnType<typeof makeSaleSchema>>;
@@ -219,7 +286,10 @@ export const expenseSchema = z
     paymentMethod: z.enum(PAYMENT_METHODS),
     vehicleId: z.string().nullable(),
     notes: optionalText(500),
-    accountId: z.string().nullable().optional(),
+    /** "Paid from": a branch's cash in hand or a bank account. */
+    accountId: z.string({ error: "Choose the cash or bank account this was paid from" }).min(1, "Choose the cash or bank account this was paid from"),
+    paymentReference: optionalText(60).optional(),
+    branchId: z.string().nullable().optional(),
   })
   .superRefine((v, ctx) => {
     if (isVehicleCategory(v.category) && !v.vehicleId)
@@ -242,6 +312,9 @@ export const userSchema = z.object({
   designation: optionalText(60).optional(),
   /** Custom access list; null keeps the account type's defaults. */
   permissions: z.array(z.enum(PERMISSIONS)).nullable().optional(),
+  branchId: z.string().nullable().optional(),
+  /** Null keeps the account type's default branch access. */
+  allBranches: z.boolean().nullable().optional(),
 });
 export type UserInput = z.infer<typeof userSchema>;
 
@@ -257,7 +330,7 @@ export const settingsSchema = z.object({
     .trim()
     .toUpperCase()
     .refine((v) => v === "" || /^\d{2}[A-Z]{5}\d{4}[A-Z][A-Z\d]Z[A-Z\d]$/.test(v), "Enter a valid 15-character GSTIN"),
-  dateFormat: z.enum(["dd MMM yyyy", "dd/MM/yyyy", "yyyy-MM-dd"]),
+  dateFormat: z.enum(["dd MMM yyyy", "dd-MM-yyyy", "dd/MM/yyyy", "yyyy-MM-dd"]),
   defaultInventoryView: z.enum(["grid", "table"]),
   receiptFooter: optionalText(200),
   receiptTerms: optionalText(600),
@@ -300,6 +373,8 @@ export const accountSchema = z.object({
   isDefault: z.boolean(),
   archived: z.boolean(),
   notes: optionalText(300),
+  /** Required for cash in hand: the branch whose drawer it is. */
+  branchId: z.string().nullable().optional(),
 });
 export type AccountInput = z.infer<typeof accountSchema>;
 
@@ -321,6 +396,7 @@ export const voucherSchema = z
     purchaseId: z.string().nullable(),
     saleId: z.string().nullable(),
     handledBy: z.string().min(1, "Select who handled the money"),
+    branchId: z.string().nullable().optional(),
   })
   .superRefine((v, ctx) => {
     const heads: readonly string[] = v.type === "receipt" ? RECEIPT_HEADS : v.type === "payment" ? PAYMENT_HEADS : ["transfer"];
@@ -369,3 +445,73 @@ export const documentMetaSchema = z.object({
   title: optionalText(80),
 });
 export type DocumentMetaInput = z.infer<typeof documentMetaSchema>;
+
+// ─── Branches, returns and day close ───────────────────────────────────────────
+
+export const branchSchema = z.object({
+  name: z.string().trim().min(2, "Give the branch a name").max(60),
+  code: z
+    .string()
+    .trim()
+    .toUpperCase()
+    .refine((v) => /^[A-Z0-9]{2,6}$/.test(v), "Use 2–6 letters or digits, e.g. KOC"),
+  address: optionalText(200),
+  phone: optionalIndianPhone,
+  archived: z.boolean(),
+});
+export type BranchInput = z.infer<typeof branchSchema>;
+
+export const settleFinanceSchema = z.object({
+  date: pastOrTodayDate,
+  accountId: z.string().min(1, "Choose the bank account the lender paid into"),
+  reference: optionalText(60),
+});
+export type SettleFinanceInput = z.infer<typeof settleFinanceSchema>;
+
+const returnBase = {
+  date: pastOrTodayDate,
+  returnAmountPaise: positivePaise("Return amount"),
+  deductionPaise: paise("Deduction"),
+  reason: z.string().trim().min(3, "Give the reason for the return").max(200),
+  notes: optionalText(500),
+  /** Refund lines paid now. Anything not paid stays as a refund due. */
+  refunds: z.array(refundLineSchema).max(10),
+};
+
+export const salesReturnSchema = z
+  .object({
+    saleId: z.string().min(1),
+    ...returnBase,
+    vehicleReturned: z.boolean(),
+    financePaymentId: z.string().nullable(),
+    financeAdjustmentPaise: paise("Loan adjustment"),
+  })
+  .superRefine((v, ctx) => {
+    if (v.deductionPaise > v.returnAmountPaise)
+      ctx.addIssue({ code: "custom", path: ["deductionPaise"], message: "Deduction cannot be more than the return amount" });
+    if (v.financeAdjustmentPaise > 0 && !v.financePaymentId)
+      ctx.addIssue({ code: "custom", path: ["financePaymentId"], message: "Pick the loan to adjust" });
+  });
+export type SalesReturnInput = z.infer<typeof salesReturnSchema>;
+
+export const purchaseReturnSchema = z
+  .object({ purchaseId: z.string().min(1), ...returnBase })
+  .superRefine((v, ctx) => {
+    if (v.deductionPaise > v.returnAmountPaise)
+      ctx.addIssue({ code: "custom", path: ["deductionPaise"], message: "Deduction cannot be more than the return amount" });
+  });
+export type PurchaseReturnInput = z.infer<typeof purchaseReturnSchema>;
+
+export const refundSchema = z.object({
+  date: pastOrTodayDate,
+  lines: z.array(refundLineSchema).min(1, "Add at least one refund line").max(10),
+});
+export type RefundInput = z.infer<typeof refundSchema>;
+
+export const dayCloseSchema = z.object({
+  branchId: z.string().min(1, "Choose the branch"),
+  date: pastOrTodayDate,
+  counted: z.array(z.object({ accountId: z.string().min(1), countedPaise: paise("Counted cash") })).min(1, "This branch has no cash account to count"),
+  notes: optionalText(300),
+});
+export type DayCloseInput = z.infer<typeof dayCloseSchema>;

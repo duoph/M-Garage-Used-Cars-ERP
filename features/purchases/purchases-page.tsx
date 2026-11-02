@@ -2,7 +2,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { Download, Plus, SearchX, ShoppingCart } from "lucide-react";
+import { Download, Plus, SearchX, ShoppingCart, Undo2 } from "lucide-react";
 import { toast } from "sonner";
 import { useData } from "@/components/providers/data-provider";
 import { useAuth } from "@/hooks/use-auth";
@@ -101,6 +101,7 @@ export function PurchasesPage() {
         description="Vehicles acquired by the showroom and what was paid for them."
         actions={
           <>
+            <Button variant="outline" asChild><Link href="/purchases/returns"><Undo2 /> Returns</Link></Button>
             {can("data.export") && canCost && (
               <Button variant="outline" onClick={exportCsv} disabled={rows.length === 0}>
                 <Download /> Export

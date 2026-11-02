@@ -20,6 +20,7 @@ import { Field } from "@/components/shared/form-field";
 import { CurrencyInput } from "@/components/shared/currency-input";
 import { DateField } from "@/components/shared/date-field";
 import { StaffSelect } from "./shared";
+import { BranchSelect, useMyBranches } from "@/features/branches/branch-select";
 
 export function AccountDialog({
   open,
@@ -59,10 +60,14 @@ function AccountForm({ account, kind, onDone }: { account?: MoneyAccount; kind: 
           isDefault: false,
           archived: false,
           notes: "",
+          branchId: kind === "cash" ? (user.branchId ?? null) : null,
         },
   });
+  const branches = useMyBranches();
   const { errors, isSubmitting } = form.formState;
   const isBank = kind === "bank";
+  const isCash = kind === "cash";
+  const title = isBank ? "bank account" : isCash ? "cash account" : kind === "owner" ? "owner account" : "lender account";
   const isDefault = useWatch({ control: form.control, name: "isDefault" });
 
   async function onSubmit(values: AccountInput) {
@@ -81,11 +86,15 @@ function AccountForm({ account, kind, onDone }: { account?: MoneyAccount; kind: 
     <DialogContent className="sm:max-w-xl">
       <form onSubmit={form.handleSubmit(onSubmit)} className="flex min-h-0 flex-col" noValidate>
         <DialogHeader>
-          <DialogTitle>{account ? `Edit ${account.name}` : isBank ? "Add bank account" : "Add cash account"}</DialogTitle>
+          <DialogTitle>{account ? `Edit ${account.name}` : `Add ${title}`}</DialogTitle>
           <DialogDescription>
             {isBank
               ? "UPI, card, cheque and bank-transfer money lands in the default bank account unless you pick another."
-              : "Give each cash drawer or cash holder its own account to see who holds how much."}
+              : isCash
+                ? "Each branch keeps its own cash in hand. Give each drawer or cash holder its own account to see who holds how much."
+                : kind === "owner"
+                  ? "Cash handed over to the owner or a partner moves here with a cash transfer."
+                  : "Loan amounts on financed sales wait here until the lender pays them into a bank."}
           </DialogDescription>
         </DialogHeader>
         <DialogBody className="grid gap-4 sm:grid-cols-2">
@@ -107,13 +116,20 @@ function AccountForm({ account, kind, onDone }: { account?: MoneyAccount; kind: 
                 <Input id="acc-upi" placeholder="mgarage@okhdfc" {...form.register("upiId")} />
               </Field>
             </>
-          ) : (
-            <Field label="Cash held by" htmlFor="acc-custodian" hint="The cash receiver responsible for this cash." className="sm:col-span-2">
-              <Controller control={form.control} name="custodianId" render={({ field }) => (
-                <StaffSelect id="acc-custodian" value={field.value} onChange={field.onChange} allowNone />
-              )} />
-            </Field>
-          )}
+          ) : isCash ? (
+            <>
+              <Field label="Branch" htmlFor="acc-branch" error={errors.branchId?.message} required hint={branches.length > 1 ? "Whose cash drawer this is." : undefined}>
+                <Controller control={form.control} name="branchId" render={({ field }) => (
+                  <BranchSelect id="acc-branch" value={field.value ?? ""} onChange={field.onChange} />
+                )} />
+              </Field>
+              <Field label="Cash held by" htmlFor="acc-custodian" hint="The cash receiver responsible for this cash.">
+                <Controller control={form.control} name="custodianId" render={({ field }) => (
+                  <StaffSelect id="acc-custodian" value={field.value} onChange={field.onChange} allowNone />
+                )} />
+              </Field>
+            </>
+          ) : null}
           <Field label="Opening balance" htmlFor="acc-opening" error={errors.openingBalancePaise?.message} hint="Money already in the account before you started using M Garage.">
             <Controller control={form.control} name="openingBalancePaise" render={({ field }) => (
               <CurrencyInput id="acc-opening" value={field.value} onChange={(v) => field.onChange(v ?? 0)} onBlur={field.onBlur} invalid={!!errors.openingBalancePaise} />
@@ -125,18 +141,18 @@ function AccountForm({ account, kind, onDone }: { account?: MoneyAccount; kind: 
           <Field label="Notes" htmlFor="acc-notes" className="sm:col-span-2">
             <Textarea id="acc-notes" rows={2} {...form.register("notes")} />
           </Field>
-          <div className="flex items-center justify-between gap-3 rounded-lg border p-3 sm:col-span-2">
+          {(isBank || isCash) && <div className="flex items-center justify-between gap-3 rounded-lg border p-3 sm:col-span-2">
             <div>
               <Label htmlFor="acc-default">Default {isBank ? "bank" : "cash"} account</Label>
               <p className="text-xs text-muted-foreground">
-                {isBank ? "Takes UPI, card, cheque and transfer payments by default." : "Takes cash payments by default."}
+                {isBank ? "Takes UPI, card, cheque and transfer payments by default." : "Takes this branch's cash payments by default."}
               </p>
               {errors.isDefault && <p className="text-xs text-destructive">{errors.isDefault.message}</p>}
             </div>
             <Controller control={form.control} name="isDefault" render={({ field }) => (
               <Switch id="acc-default" checked={field.value} onCheckedChange={field.onChange} />
             )} />
-          </div>
+          </div>}
           {account && (
             <div className="flex items-center justify-between gap-3 rounded-lg border p-3 sm:col-span-2">
               <div>

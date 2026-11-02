@@ -137,7 +137,7 @@ function ImportCard({ kind }: { kind: ImportKind }) {
   async function onFile(file: File) {
     try {
       const sheet = await readSpreadsheet(file);
-      const plan = planImport(kind, sheet, { vehicles: ds.vehicles });
+      const plan = planImport(kind, sheet, { vehicles: ds.vehicles, accounts: ds.accounts });
       setState({ step: "review", file: file.name, plan });
     } catch (e) {
       if (e instanceof SpreadsheetError || e instanceof ImportFileError) setState({ step: "error", file: file.name, message: e.message });

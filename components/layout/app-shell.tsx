@@ -44,7 +44,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <SidebarNav mobile onNavigate={() => setMobileNavOpen(false)} />
         </SheetContent>
       </Sheet>
-      <div className={cn("flex min-h-dvh flex-col transition-[padding] duration-200", collapsed ? "lg:pl-[68px]" : "lg:pl-60")}>
+      <div className={cn("flex min-h-dvh flex-col transition-[padding] duration-200 print:pl-0!", collapsed ? "lg:pl-[68px]" : "lg:pl-60")}>
         <Topbar />
         <main className="mx-auto w-full max-w-[1600px] flex-1 px-4 py-4 sm:px-5 lg:px-6 lg:py-5">
           {/* Keyed by path so each page fades in gently on navigation. */}

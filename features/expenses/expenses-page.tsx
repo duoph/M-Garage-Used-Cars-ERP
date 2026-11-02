@@ -1,5 +1,6 @@
 "use client";
 import * as React from "react";
+import { useSearchParams } from "next/navigation";
 import { Download, MoreHorizontal, Pencil, Plus, SearchX, Trash2, Wallet } from "lucide-react";
 import { toast } from "sonner";
 import { useData } from "@/components/providers/data-provider";
@@ -27,6 +28,8 @@ import { StatCard } from "@/components/shared/stat-card";
 import { ChartCard } from "@/components/shared/chart-card";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { ExpenseBreakdownChart, ExpenseLegend } from "@/features/dashboard/charts";
+import { accountLabel, liveAccounts } from "@/features/accounts/shared";
+import { UNASSIGNED_ACCOUNT_ID } from "@/lib/calculations/ledger";
 
 export function ExpensesPage() {
   const { ds, idx } = useData();
@@ -38,7 +41,22 @@ export function ExpensesPage() {
   const [type, setType] = React.useState<"all" | "vehicle" | "general">("all");
   const [category, setCategory] = React.useState<"all" | ExpenseCategory>("all");
   const [toDelete, setToDelete] = React.useState<Expense | null>(null);
+  const [paidFrom, setPaidFrom] = React.useState("all");
   const canManage = can("expenses.manage");
+  const params = useSearchParams();
+  const linked = params.get("expense");
+  const paidFromName = React.useCallback(
+    (e: Expense) => {
+      const a = e.accountId ? idx.accounts.get(e.accountId) : undefined;
+      return a ? accountLabel(a, ds.branches) : "Unassigned";
+    },
+    [idx, ds.branches],
+  );
+
+  // Drill-down from a report or the day book opens that expense.
+  React.useEffect(() => {
+    if (linked && ds.expenses.some((e) => e.id === linked)) openExpense({ expenseId: linked });
+  }, [linked, ds.expenses, openExpense]);
 
   const inPeriod = React.useMemo(() => ds.expenses.filter((e) => inRange(e.date, range)), [ds.expenses, range]);
   const rows = React.useMemo(() => {
@@ -46,19 +64,21 @@ export function ExpensesPage() {
     return inPeriod
       .filter((e) => (type === "all" ? true : type === "vehicle" ? !!e.vehicleId : !e.vehicleId))
       .filter((e) => category === "all" || e.category === category)
+      .filter((e) => paidFrom === "all" || (paidFrom === UNASSIGNED_ACCOUNT_ID ? !e.accountId || !idx.accounts.has(e.accountId) : e.accountId === paidFrom))
       .filter((e) => {
         if (!q) return true;
         const v = e.vehicleId ? idx.vehicles.get(e.vehicleId) : undefined;
         return `${e.reference} ${e.description} ${e.vendor} ${EXPENSE_CATEGORY_LABELS[e.category]} ${v?.make ?? ""} ${v?.model ?? ""} ${v?.registrationNumber ?? ""}`.toLowerCase().includes(q);
       })
       .sort((a, b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt));
-  }, [inPeriod, search, type, category, idx]);
+  }, [inPeriod, search, type, category, paidFrom, idx]);
+  const unassignedCount = ds.expenses.filter((e) => !e.accountId || !idx.accounts.has(e.accountId)).length;
 
   const totalAll = sumPaise(inPeriod.map((e) => e.amountPaise));
   const totalVehicle = sumPaise(inPeriod.filter((e) => e.vehicleId).map((e) => e.amountPaise));
   const totalGeneral = totalAll - totalVehicle;
 
-  const paged = usePagedRows(rows, `${search}|${type}|${category}|${range.from}|${range.to}`);
+  const paged = usePagedRows(rows, `${search}|${type}|${category}|${paidFrom}|${range.from}|${range.to}`);
 
   function exportCsv() {
     downloadCsv(`expenses-${todayISO()}.csv`, rows, [
@@ -70,6 +90,8 @@ export function ExpensesPage() {
       { header: "Vendor", value: (e) => e.vendor },
       { header: "Vehicle", value: (e) => { const v = e.vehicleId ? idx.vehicles.get(e.vehicleId) : undefined; return v ? `${vehicleTitle(v)} (${v.registrationNumber})` : ""; } },
       { header: "Payment Method", value: (e) => PAYMENT_METHOD_LABELS[e.paymentMethod] },
+      { header: "Paid From", value: paidFromName },
+      { header: "Payment Reference", value: (e) => e.paymentReference ?? "" },
       { header: "Amount (INR)", value: (e) => csvRupees(e.amountPaise) },
       { header: "Recorded By", value: (e) => idx.users.get(e.createdBy)?.name },
     ]);
@@ -94,6 +116,16 @@ export function ExpensesPage() {
         <StatCard label="Vehicle-related" value={formatINRCompact(totalVehicle)} icon={Wallet} hint="Added to vehicle landed cost" />
         <StatCard label="General operating" value={formatINRCompact(totalGeneral)} icon={Wallet} tone="danger" hint="Not deducted from per-car profit" />
       </div>
+      {unassignedCount > 0 && (
+        <button
+          type="button"
+          onClick={() => { setPaidFrom(UNASSIGNED_ACCOUNT_ID); setRange(resolvePreset("all")); }}
+          className="mt-4 flex w-full items-center gap-2 rounded-xl border border-warning/40 bg-warning-soft px-4 py-3 text-left text-sm"
+        >
+          <Badge tone="warning">Unassigned</Badge>
+          <span>{unassignedCount} older {unassignedCount === 1 ? "expense has" : "expenses have"} no “Paid from” account. Open each one to pick the cash or bank account it came out of.</span>
+        </button>
+      )}
       <ChartCard title="Expenses by category" description="Selected period" action={<ExpenseLegend />} className="mt-4">
         <ExpenseBreakdownChart data={expenseBreakdown(inPeriod)} height={300} />
       </ChartCard>
@@ -115,6 +147,16 @@ export function ExpensesPage() {
               <SelectContent>
                 <SelectItem value="all">All categories</SelectItem>
                 {EXPENSE_CATEGORIES.map((c) => <SelectItem key={c} value={c}>{EXPENSE_CATEGORY_LABELS[c]}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <Select value={paidFrom} onValueChange={setPaidFrom}>
+              <SelectTrigger className="h-8 w-[190px]" aria-label="Paid from"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Paid from: any account</SelectItem>
+                {liveAccounts(ds.accounts).filter((a) => a.kind === "cash" || a.kind === "bank").map((a) => (
+                  <SelectItem key={a.id} value={a.id}>{accountLabel(a, ds.branches)}</SelectItem>
+                ))}
+                <SelectItem value={UNASSIGNED_ACCOUNT_ID}>Unassigned</SelectItem>
               </SelectContent>
             </Select>
           </FilterBar>
@@ -139,6 +181,8 @@ export function ExpensesPage() {
                         {formatDate(e.date)} · {v ? <>{vehicleTitle(v)} <span className="font-mono">{v.registrationNumber}</span></> : "General"}
                         {e.vendor && <> · {e.vendor}</>}
                         {" · "}{e.reference}
+                        {" · "}
+                        {e.accountId && idx.accounts.has(e.accountId) ? <>Paid from {paidFromName(e)}{e.paymentReference && <> · Ref {e.paymentReference}</>}</> : <Badge tone="warning">Unassigned</Badge>}
                       </>
                     }
                     mobile={
@@ -150,6 +194,7 @@ export function ExpensesPage() {
                     aside={
                       <>
                         <RowCell from="md" className="w-36 text-right">{categoryBadge}</RowCell>
+                        <RowCell from="xl" className="w-40 truncate text-right text-xs text-muted-foreground">{paidFromName(e)}</RowCell>
                         <RowCell from="lg" className="w-28 truncate text-right text-xs text-muted-foreground">{idx.users.get(e.createdBy)?.name ?? ""}</RowCell>
                         <RowCell className="w-28 text-right text-sm font-semibold tabular">{formatINR(e.amountPaise)}</RowCell>
                       </>

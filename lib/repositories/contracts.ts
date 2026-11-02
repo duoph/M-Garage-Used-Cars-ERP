@@ -6,6 +6,13 @@ import type {
 } from "@/types";
 import type {
   AccountInput,
+  BranchInput,
+  DayCloseInput,
+  PurchaseReturnInput,
+  ReceiveInput,
+  RefundInput,
+  SalesReturnInput,
+  SettleFinanceInput,
   DocumentMetaInput,
   ExpenseInput,
   PapersInput,
@@ -81,6 +88,24 @@ export interface DealerCommands {
   completeSale(actor: User, input: SaleInput): Promise<ID>;
   cancelSale(actor: User, saleId: ID, reason: string): Promise<void>;
   recordPayment(actor: User, saleId: ID, input: PaymentInput): Promise<ID>;
+  /** "Receive Payment": one or more payment lines against a sale's balance. Returns the payment ids. */
+  receivePayments(actor: User, saleId: ID, input: ReceiveInput): Promise<ID[]>;
+  /** The lender paid a loan line into a bank account. */
+  settleFinance(actor: User, paymentId: ID, input: SettleFinanceInput): Promise<void>;
+  /** Pays the seller against a purchase's balance, from one or more accounts. */
+  payPurchase(actor: User, purchaseId: ID, input: ReceiveInput): Promise<ID[]>;
+
+  createSalesReturn(actor: User, input: SalesReturnInput): Promise<ID>;
+  createPurchaseReturn(actor: User, input: PurchaseReturnInput): Promise<ID>;
+  /** Refund paid to the buyer (sales return) or received from the seller (purchase return). */
+  recordRefund(actor: User, returnType: "sales" | "purchase", returnId: ID, input: RefundInput): Promise<ID[]>;
+  /** A car back from a sales return passed inspection and is for sale again. */
+  backToStock(actor: User, vehicleId: ID): Promise<void>;
+
+  createBranch(actor: User, input: BranchInput): Promise<ID>;
+  updateBranch(actor: User, branchId: ID, input: BranchInput): Promise<void>;
+  closeDay(actor: User, input: DayCloseInput): Promise<ID>;
+  reopenDay(actor: User, dayCloseId: ID, reason: string): Promise<void>;
 
   createExpense(actor: User, input: ExpenseInput): Promise<ID>;
   updateExpense(actor: User, expenseId: ID, input: ExpenseInput): Promise<void>;

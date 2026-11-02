@@ -17,10 +17,12 @@ const VEHICLE_TONE: Record<VehicleStatus, { tone: Tone; dot: string }> = {
   available: { tone: "success", dot: "bg-success" },
   reserved: { tone: "warning", dot: "bg-warning" },
   sold: { tone: "neutral", dot: "bg-[#667085]" },
+  returned_inspection: { tone: "info", dot: "bg-[#2948b8]" },
+  returned_to_supplier: { tone: "danger", dot: "bg-destructive" },
 };
 
 export function VehicleStatusBadge({ status, archived }: { status: VehicleStatus; archived?: boolean }) {
-  if (archived)
+  if (archived && status !== "returned_to_supplier")
     return (
       <Badge tone="danger">
         <Dot className="bg-destructive" />

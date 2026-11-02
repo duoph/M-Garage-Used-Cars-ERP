@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { Controller, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Ban, HandCoins, Pencil, ShoppingCart } from "lucide-react";
+import { Ban, HandCoins, Pencil, ShoppingCart, Undo2 } from "lucide-react";
 import { toast } from "sonner";
 import { useData } from "@/components/providers/data-provider";
 import { useAuth, useCurrentUser } from "@/hooks/use-auth";
@@ -35,6 +35,14 @@ import { PaymentStatusBadge, PurchaseStatusBadge, VehicleStatusBadge } from "@/c
 import { ActivityFeed } from "@/features/activity/activity-feed";
 import { DocumentsCard } from "@/features/documents/documents-card";
 import { useDialogStore } from "@/lib/store/dialogs";
+import { PaySellerDialog } from "./pay-seller-dialog";
+import { PurchaseReturnDialog } from "@/features/returns/purchase-return-dialog";
+import { ReturnStatusBadge } from "@/features/returns/shared";
+import { accountLabel } from "@/features/accounts/shared";
+import { canReturnPurchase } from "@/lib/calculations/state";
+import { netPurchasePrice, purchaseRefundDue } from "@/lib/calculations/finance";
+import { Badge } from "@/components/ui/badge";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -47,11 +55,13 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
 
 export function PurchaseDetailPage() {
   const { id } = useParams<{ id: string }>();
-  const { idx } = useData();
+  const { ds, idx } = useData();
   const { can } = useAuth();
   const user = useCurrentUser();
   const openVoucher = useDialogStore((s) => s.openVoucher);
   const [editing, setEditing] = React.useState(false);
+  const [paying, setPaying] = React.useState(false);
+  const [returning, setReturning] = React.useState(false);
   const [cancelling, setCancelling] = React.useState(false);
   const purchase = idx.purchases.get(id);
 
@@ -68,15 +78,24 @@ export function PurchaseDetailPage() {
   const vehicle = idx.vehicles.get(purchase.vehicleId);
   const view = vehicle ? vehicleView(vehicle, idx) : undefined;
   const status = purchasePaymentStatus(purchase);
-  const cancelCheck = canCancelPurchase(vehicle);
+  const cancelCheck = canCancelPurchase(vehicle, purchase);
   const editable = can("purchases.manage") && purchase.status === "active";
+  const lines = idx.purchasePaymentsByPurchase.get(purchase.id) ?? [];
+  const sellerVouchers = ds.vouchers.filter((v) => v.status === "active" && v.head === "seller_payment" && v.purchaseId === purchase.id);
+  const returns = idx.purchaseReturnsByPurchase.get(purchase.id) ?? [];
+  const canReturn = can("purchases.manage") && canReturnPurchase(purchase, vehicle).ok;
+  const refundDue = purchaseRefundDue(purchase);
+  const accountName = (accountId: string) => {
+    const a = idx.accounts.get(accountId);
+    return a ? accountLabel(a, ds.branches) : "—";
+  };
 
   return (
     <>
       <PageHeader
         title={
           <span className="flex flex-wrap items-center gap-2.5">
-            {purchase.reference} <PurchaseStatusBadge status={purchase.status} />
+            {purchase.reference} <PurchaseStatusBadge status={purchase.status} /> <ReturnStatusBadge status={purchase.returnStatus} />
           </span>
         }
         description={`Purchased on ${formatDate(purchase.purchaseDate)} from ${purchase.sellerName}`}
@@ -91,8 +110,11 @@ export function PurchaseDetailPage() {
                 <Button variant={purchaseBalance(purchase) > 0 && can("accounts.manage") ? "outline" : "default"} onClick={() => setEditing(true)}><Pencil /> Edit purchase</Button>
               </>
             )}
-            {purchase.status === "active" && purchaseBalance(purchase) > 0 && can("accounts.manage") && (
-              <Button onClick={() => openVoucher({ type: "payment", purchaseId: purchase.id })}><HandCoins /> Pay seller</Button>
+            {canReturn && (
+              <Button variant="outline" onClick={() => setReturning(true)}><Undo2 /> Purchase return</Button>
+            )}
+            {purchase.status === "active" && purchaseBalance(purchase) > 0 && (can("purchases.manage") || can("accounts.manage")) && (
+              <Button onClick={() => (can("purchases.manage") ? setPaying(true) : openVoucher({ type: "payment", purchaseId: purchase.id }))}><HandCoins /> Pay seller</Button>
             )}
           </>
         }
@@ -113,11 +135,13 @@ export function PurchaseDetailPage() {
             <div className="grid gap-x-8 sm:grid-cols-2">
               <dl className="divide-y">
                 <Row label="Purchase price">{formatINR(purchase.purchasePricePaise)}</Row>
+                {netPurchasePrice(purchase) !== purchase.purchasePricePaise && <Row label="After purchase returns">{formatINR(netPurchasePrice(purchase))}</Row>}
                 <Row label="Amount paid">{formatINR(purchase.amountPaidPaise)}</Row>
                 <Row label="Balance owed to seller">
                   <span className={purchaseBalance(purchase) > 0 ? "text-warning" : ""}>{formatINR(purchaseBalance(purchase))}</span>
                 </Row>
                 <Row label="Payment status"><PaymentStatusBadge status={status} /></Row>
+                {refundDue > 0 && <Row label="Refund due from seller"><Badge tone="warning">{formatINR(refundDue)}</Badge></Row>}
               </dl>
               <dl className="divide-y">
                 <Row label="Payment method">{PAYMENT_METHOD_LABELS[purchase.paymentMethod]}</Row>
@@ -128,6 +152,66 @@ export function PurchaseDetailPage() {
             </div>
             {purchase.notes && <p className="mt-3 rounded-lg bg-muted/60 p-3 text-[13px]">{purchase.notes}</p>}
           </CardContent>
+          <div className="border-t">
+            <div className="flex items-center justify-between px-4 py-3">
+              <h3 className="text-sm font-semibold">Payments to seller</h3>
+              <span className="text-xs text-muted-foreground">{lines.length + sellerVouchers.length} payment{lines.length + sellerVouchers.length === 1 ? "" : "s"}</span>
+            </div>
+            {lines.length + sellerVouchers.length === 0 ? (
+              <p className="px-4 pb-5 text-[13px] text-muted-foreground">Nothing paid to the seller yet.</p>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow className="hover:bg-transparent">
+                    <TableHead>Number</TableHead>
+                    <TableHead>Date</TableHead>
+                    <TableHead>Mode</TableHead>
+                    <TableHead>Paid from</TableHead>
+                    <TableHead>Reference</TableHead>
+                    <TableHead className="text-right">Amount</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {lines.map((l) => (
+                    <TableRow key={l.id}>
+                      <TableCell className="font-medium">{l.number}<div className="text-[11px] font-normal text-muted-foreground">{l.kind === "at_purchase" ? "At purchase" : idx.users.get(l.recordedBy)?.name}</div></TableCell>
+                      <TableCell>{formatDate(l.date)}</TableCell>
+                      <TableCell>{PAYMENT_METHOD_LABELS[l.method]}</TableCell>
+                      <TableCell className="text-muted-foreground">{accountName(l.accountId)}</TableCell>
+                      <TableCell className="max-w-40 truncate text-muted-foreground">{l.reference || "—"}</TableCell>
+                      <TableCell className="text-right font-medium tabular">{formatINR(l.amountPaise)}</TableCell>
+                    </TableRow>
+                  ))}
+                  {sellerVouchers.map((v) => (
+                    <TableRow key={v.id}>
+                      <TableCell className="font-medium"><Link href={`/voucher/${v.id}`} className="text-primary hover:underline">{v.number}</Link><div className="text-[11px] font-normal text-muted-foreground">Payment voucher</div></TableCell>
+                      <TableCell>{formatDate(v.date)}</TableCell>
+                      <TableCell>{PAYMENT_METHOD_LABELS[v.method]}</TableCell>
+                      <TableCell className="text-muted-foreground">{accountName(v.accountId)}</TableCell>
+                      <TableCell className="max-w-40 truncate text-muted-foreground">{v.reference || "—"}</TableCell>
+                      <TableCell className="text-right font-medium tabular">{formatINR(v.amountPaise)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </div>
+          {returns.length > 0 && (
+            <div className="border-t px-4 py-3">
+              <h3 className="mb-2 text-sm font-semibold">Purchase returns</h3>
+              <ul className="divide-y text-[13px]">
+                {returns.map((r) => (
+                  <li key={r.id} className="flex items-center justify-between gap-3 py-2">
+                    <div>
+                      <Link href={`/purchases/returns/${r.id}`} className="font-medium text-primary hover:underline">{r.number}</Link>
+                      <span className="ml-2 text-xs text-muted-foreground">{formatDate(r.date)} · {r.reason}</span>
+                    </div>
+                    <span className="font-medium tabular">{formatINR(r.returnAmountPaise)}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </Card>
         <Card>
           <CardHeader className="pb-1"><CardTitle>Seller</CardTitle></CardHeader>
@@ -212,6 +296,8 @@ export function PurchaseDetailPage() {
           }
         }}
       />
+      {can("purchases.manage") && purchase.status === "active" && <PaySellerDialog purchase={purchase} open={paying} onOpenChange={setPaying} />}
+      {canReturn && <PurchaseReturnDialog purchase={purchase} open={returning} onOpenChange={setReturning} />}
     </>
   );
 }

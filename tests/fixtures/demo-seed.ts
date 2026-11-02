@@ -1,5 +1,7 @@
 import { addDays, format, setHours, setMinutes, startOfMonth, subDays, subMonths } from "date-fns";
 import type { DealerDatabase } from "@/lib/db/database";
+import { defaultAccounts } from "@/lib/db/bootstrap";
+import { mainBranch, migrateAccounting } from "@/lib/db/migrate";
 import { formatReference, newId } from "@/lib/utils/ids";
 import { formatINR } from "@/lib/utils/money";
 import { EXPENSE_CATEGORY_LABELS } from "@/lib/utils/labels";
@@ -529,5 +531,9 @@ export async function seedDatabase(db: DealerDatabase, opts: SeedOptions = {}) {
     await db.settings.bulkAdd(data.settings);
     await db.counters.bulkAdd(data.counters);
     await db.meta.put({ key: "seededAt", value: new Date().toISOString() });
+    await db.branches.add(mainBranch());
+    await db.accounts.bulkAdd(defaultAccounts());
   });
+  // Older demo records gain the main branch, payment lines and their ledger, like a real upgrade.
+  await migrateAccounting(db);
 }

@@ -436,6 +436,8 @@ export interface SheetData {
   name: string;
   columns: SheetColumn[];
   rows: Cell[][];
+  /** Lines written above the column headers (report title, period, branch). */
+  preamble?: string[];
 }
 
 const escapeXml = (s: string) =>
@@ -467,26 +469,29 @@ function sheetXml(sheet: SheetData): string {
     const space = /^\s|\s$/.test(text) ? ' xml:space="preserve"' : "";
     return `<c r="${ref}" t="inlineStr"${s}><is><t${space}>${escapeXml(text)}</t></is></c>`;
   };
-  const header = `<row r="1">${sheet.columns.map((c, i) => cell(`${columnName(i)}1`, c.header, STYLE.header)).join("")}</row>`;
+  const lead = sheet.preamble?.length ? [...sheet.preamble, ""] : [];
+  const h = lead.length + 1;
+  const pre = lead.map((line, i) => `<row r="${i + 1}">${cell(`A${i + 1}`, line, i === 0 ? STYLE.header : 0)}</row>`).join("");
+  const header = `<row r="${h}">${sheet.columns.map((c, i) => cell(`${columnName(i)}${h}`, c.header, STYLE.header)).join("")}</row>`;
   const body = sheet.rows
     .map((row, r) => {
       const cells = sheet.columns.map((c, i) => {
         const style = c.format === "money" ? STYLE.money : c.format === "integer" ? STYLE.integer : 0;
-        return cell(`${columnName(i)}${r + 2}`, row[i] ?? null, typeof row[i] === "number" ? style : 0);
+        return cell(`${columnName(i)}${r + h + 1}`, row[i] ?? null, typeof row[i] === "number" ? style : 0);
       });
-      return `<row r="${r + 2}">${cells.join("")}</row>`;
+      return `<row r="${r + h + 1}">${cells.join("")}</row>`;
     })
     .join("");
   const cols = sheet.columns
     .map((c, i) => `<col min="${i + 1}" max="${i + 1}" width="${Math.min(60, Math.max(8, c.width ?? Math.max(10, c.header.length + 2)))}" customWidth="1"/>`)
     .join("");
-  const last = `${columnName(Math.max(0, sheet.columns.length - 1))}${sheet.rows.length + 1}`;
+  const last = `${columnName(Math.max(0, sheet.columns.length - 1))}${sheet.rows.length + h}`;
   return (
     `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">` +
-    `<sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>` +
+    `<sheetViews><sheetView workbookViewId="0"><pane ySplit="${h}" topLeftCell="A${h + 1}" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>` +
     (cols ? `<cols>${cols}</cols>` : "") +
-    `<sheetData>${header}${body}</sheetData>` +
-    (sheet.columns.length ? `<autoFilter ref="A1:${last}"/>` : "") +
+    `<sheetData>${pre}${header}${body}</sheetData>` +
+    (sheet.columns.length ? `<autoFilter ref="A${h}:${last}"/>` : "") +
     `</worksheet>`
   );
 }

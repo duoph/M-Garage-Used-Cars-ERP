@@ -285,4 +285,18 @@
   .no-print {
     display: none !important;
   }
+  .print-only {
+    display: block !important;
+  }
+  /* Reports print as plain tables: no sticky bars, shadows or clipped scroll areas. */
+  .print-flat,
+  .print-flat * {
+    box-shadow: none !important;
+    overflow: visible !important;
+    position: static !important;
+  }
+}
+
+.print-only {
+  display: none;
 }

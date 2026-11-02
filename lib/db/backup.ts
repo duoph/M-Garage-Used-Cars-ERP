@@ -1,8 +1,9 @@
 import { z } from "zod";
 import type { DealerDatabase } from "@/lib/db/database";
 import { defaultAccounts, markInitialized } from "@/lib/db/bootstrap";
+import { migrateAccounting } from "@/lib/db/migrate";
 import { newId } from "@/lib/utils/ids";
-import { ROLES, type User } from "@/types";
+import { ACCOUNT_KINDS, ROLES, VEHICLE_STATUSES, type User } from "@/types";
 
 /**
  * Local backup / restore for browser-stored data. Images travel as data URLs inside the JSON file.
@@ -18,7 +19,7 @@ const backupSchema = z.object({
   exportedAt: z.string(),
   tables: z.object({
     users: z.array(row.extend({ name: z.string(), role: z.enum(ROLES), status: z.string() })).min(1),
-    vehicles: z.array(row.extend({ registrationNumber: z.string(), status: z.enum(["available", "reserved", "sold"]), askingPricePaise: z.number().int() })),
+    vehicles: z.array(row.extend({ registrationNumber: z.string(), status: z.enum(VEHICLE_STATUSES), askingPricePaise: z.number().int() })),
     purchases: z.array(row.extend({ vehicleId: z.string(), purchasePricePaise: z.number().int(), amountPaidPaise: z.number().int() })),
     vehicleImages: z.array(row.extend({ vehicleId: z.string(), storageKey: z.string(), thumbKey: z.string() })),
     customers: z.array(row),
@@ -28,9 +29,16 @@ const backupSchema = z.object({
     // Older backups may still carry a "quotes" table; it is ignored (quotes were removed).
     expenses: z.array(row.extend({ amountPaise: z.number().int(), category: z.string() })),
     // Added with accounting; older backups have none and get the default accounts.
-    accounts: z.array(row.extend({ name: z.string(), kind: z.enum(["cash", "bank"]) })).optional(),
+    accounts: z.array(row.extend({ name: z.string(), kind: z.enum(ACCOUNT_KINDS) })).optional(),
     vouchers: z.array(row.extend({ accountId: z.string(), amountPaise: z.number().int() })).optional(),
     documents: z.array(row.extend({ storageKey: z.string() })).optional(),
+    // Added with branches and returns. The ledger itself is not backed up: it is rebuilt from these records.
+    branches: z.array(row.extend({ name: z.string() })).optional(),
+    purchasePayments: z.array(row.extend({ purchaseId: z.string(), accountId: z.string(), amountPaise: z.number().int() })).optional(),
+    salesReturns: z.array(row.extend({ saleId: z.string(), returnAmountPaise: z.number().int() })).optional(),
+    purchaseReturns: z.array(row.extend({ purchaseId: z.string(), returnAmountPaise: z.number().int() })).optional(),
+    returnRefunds: z.array(row.extend({ returnId: z.string(), accountId: z.string(), amountPaise: z.number().int() })).optional(),
+    dayCloses: z.array(row.extend({ branchId: z.string(), date: z.string() })).optional(),
     activity: z.array(row),
     settings: z.array(row).length(1),
     counters: z.array(z.object({ key: z.string(), value: z.number().int() })),
@@ -58,6 +66,9 @@ export async function exportBackup(db: DealerDatabase): Promise<string> {
       db.reservations.toArray(), db.sales.toArray(), db.salePayments.toArray(), db.expenses.toArray(), db.accounts.toArray(),
       db.vouchers.toArray(), db.documents.toArray(), db.activity.toArray(), db.settings.toArray(), db.counters.toArray(), db.imageBlobs.toArray(),
     ]);
+  const [branches, purchasePayments, salesReturns, purchaseReturns, returnRefunds, dayCloses] = await Promise.all([
+    db.branches.toArray(), db.purchasePayments.toArray(), db.salesReturns.toArray(), db.purchaseReturns.toArray(), db.returnRefunds.toArray(), db.dayCloses.toArray(),
+  ]);
   const blobs = await Promise.all(
     blobRows.map(async (b) => ({ key: b.key, mimeType: b.mimeType, dataUrl: await blobToDataUrl(b.blob) })),
   );
@@ -65,7 +76,10 @@ export async function exportBackup(db: DealerDatabase): Promise<string> {
     app: "dealeros",
     version: BACKUP_VERSION,
     exportedAt: new Date().toISOString(),
-    tables: { users, vehicles, purchases, vehicleImages, customers, reservations, sales, salePayments, expenses, accounts, vouchers, documents, activity, settings, counters },
+    tables: {
+      users, vehicles, purchases, vehicleImages, customers, reservations, sales, salePayments, expenses, accounts, vouchers, documents, activity, settings, counters,
+      branches, purchasePayments, salesReturns, purchaseReturns, returnRefunds, dayCloses,
+    },
     blobs,
   });
 }
@@ -118,6 +132,12 @@ export async function importBackup(db: DealerDatabase, json: string, actor: User
     await db.accounts.bulkAdd((tables.accounts?.length ? tables.accounts : defaultAccounts()) as any);
     await db.vouchers.bulkAdd((tables.vouchers ?? []) as any);
     await db.documents.bulkAdd((tables.documents ?? []) as any);
+    await db.branches.bulkAdd((tables.branches ?? []) as any);
+    await db.purchasePayments.bulkAdd((tables.purchasePayments ?? []) as any);
+    await db.salesReturns.bulkAdd((tables.salesReturns ?? []) as any);
+    await db.purchaseReturns.bulkAdd((tables.purchaseReturns ?? []) as any);
+    await db.returnRefunds.bulkAdd((tables.returnRefunds ?? []) as any);
+    await db.dayCloses.bulkAdd((tables.dayCloses ?? []) as any);
     await db.activity.bulkAdd(tables.activity as any);
     await db.settings.bulkAdd(tables.settings as any);
     await db.counters.bulkAdd(tables.counters);
@@ -131,6 +151,8 @@ export async function importBackup(db: DealerDatabase, json: string, actor: User
     });
   });
   /* eslint-enable @typescript-eslint/no-explicit-any */
+  // Older backups gain the main branch and their payment lines; every backup gets its ledger rebuilt.
+  await migrateAccounting(db);
 
   return {
     ok: true,
@@ -138,18 +160,23 @@ export async function importBackup(db: DealerDatabase, json: string, actor: User
   };
 }
 
-/** Removes all business records but keeps staff accounts, cash/bank accounts and showroom settings. */
+/** Removes all business records but keeps staff accounts, branches, cash/bank accounts and showroom settings. */
 export async function clearBusinessData(db: DealerDatabase, actor: User) {
+  const cleared = [
+    db.vehicles, db.purchases, db.vehicleImages, db.imageBlobs, db.customers, db.reservations, db.sales, db.salePayments, db.expenses, db.vouchers,
+    db.documents, db.activity, db.counters, db.purchasePayments, db.salesReturns, db.purchaseReturns, db.returnRefunds, db.dayCloses,
+  ];
   await db.transaction(
     "rw",
-    [db.vehicles, db.purchases, db.vehicleImages, db.imageBlobs, db.customers, db.reservations, db.sales, db.salePayments, db.expenses, db.vouchers, db.documents, db.activity, db.counters, db.settings],
+    [...cleared, db.settings, db.ledgerEntries, db.meta],
     async () => {
       const settings = await db.settings.get("business");
       const logoKey = settings?.logoKey;
       const logo = logoKey ? await db.imageBlobs.get(logoKey) : undefined;
-      await Promise.all(
-        [db.vehicles, db.purchases, db.vehicleImages, db.imageBlobs, db.customers, db.reservations, db.sales, db.salePayments, db.expenses, db.vouchers, db.documents, db.activity, db.counters].map((t) => t.clear()),
-      );
+      await Promise.all(cleared.map((t) => t.clear()));
+      // Only opening balances remain; the migration step re-posts them.
+      await db.ledgerEntries.clear();
+      await db.meta.delete("accountingVersion");
       if (logo) await db.imageBlobs.put(logo);
       await db.activity.add({
         id: newId(), actorId: actor.id, entityType: "settings", entityId: "business", action: "data.reset",
@@ -157,4 +184,5 @@ export async function clearBusinessData(db: DealerDatabase, actor: User) {
       });
     },
   );
+  await migrateAccounting(db);
 }

@@ -2,7 +2,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { Ban, FileSignature, FileText, Plus, Printer, Receipt } from "lucide-react";
+import { Ban, CheckCircle2, FileSignature, FileText, Plus, Printer, Receipt, Undo2 } from "lucide-react";
 import { toast } from "sonner";
 import { useData } from "@/components/providers/data-provider";
 import { useAuth, useCurrentUser } from "@/hooks/use-auth";
@@ -25,6 +25,14 @@ import { VehicleImage } from "@/components/shared/vehicle-image";
 import { PaymentStatusBadge, SaleStatusBadge } from "@/components/shared/status-badge";
 import { ActivityFeed } from "@/features/activity/activity-feed";
 import { PaymentDialog } from "./payment-dialog";
+import { FinanceSettleDialog } from "./finance-dialog";
+import { SalesReturnDialog } from "@/features/returns/sales-return-dialog";
+import { ReturnStatusBadge } from "@/features/returns/shared";
+import { accountLabel } from "@/features/accounts/shared";
+import { canReturnSale } from "@/lib/calculations/state";
+import { financePending } from "@/lib/calculations/finance";
+import { Badge } from "@/components/ui/badge";
+import type { SalePayment } from "@/types";
 import { DocumentsCard } from "@/features/documents/documents-card";
 
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
@@ -38,10 +46,12 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
 
 export function SaleDetailPage() {
   const { id } = useParams<{ id: string }>();
-  const { idx } = useData();
+  const { ds, idx } = useData();
   const { can } = useAuth();
   const user = useCurrentUser();
   const [paying, setPaying] = React.useState(false);
+  const [returning, setReturning] = React.useState(false);
+  const [settling, setSettling] = React.useState<SalePayment | null>(null);
   const [cancelling, setCancelling] = React.useState(false);
   const sale = idx.sales.get(id);
 
@@ -60,19 +70,29 @@ export function SaleDetailPage() {
   const vv = sv.vehicle ? vehicleView(sv.vehicle, idx) : undefined;
   const { totals } = sv;
   const completed = sale.status === "completed";
-  const pct = sale.salePricePaise > 0 ? Math.round((totals.receivedPaise / sale.salePricePaise) * 100) : 0;
+  const credited = totals.netPricePaise - totals.balancePaise + totals.refundDuePaise;
+  const pct = totals.netPricePaise > 0 ? Math.min(100, Math.round((credited / totals.netPricePaise) * 100)) : 100;
   const latest = sv.payments[sv.payments.length - 1];
+  const returns = idx.salesReturnsBySale.get(sale.id) ?? [];
+  const canReturn = can("sales.cancel") && canReturnSale(sale).ok;
+  const accountName = (accountId: string | null | undefined) => {
+    const a = accountId ? idx.accounts.get(accountId) : undefined;
+    return a ? accountLabel(a, ds.branches) : "—";
+  };
 
   return (
     <>
       <PageHeader
-        title={<span className="flex flex-wrap items-center gap-2.5">{sale.reference} <SaleStatusBadge status={sale.status} /></span>}
+        title={<span className="flex flex-wrap items-center gap-2.5">{sale.reference} <SaleStatusBadge status={sale.status} /><ReturnStatusBadge status={sale.returnStatus} /></span>}
         description={`Sold on ${formatDate(sale.saleDate)} to ${sv.customer?.name ?? "buyer"}`}
         breadcrumbs={[{ label: "Sales", href: "/sales" }, { label: sale.reference }]}
         actions={
           <>
-            {can("sales.cancel") && completed && (
+            {can("sales.cancel") && completed && returns.length === 0 && (
               <Button variant="outline" onClick={() => setCancelling(true)}><Ban /> Cancel sale</Button>
+            )}
+            {canReturn && (
+              <Button variant="outline" onClick={() => setReturning(true)}><Undo2 /> Sales return</Button>
             )}
             {can("receipts.print") && (
               <Button variant="outline" asChild>
@@ -90,14 +110,14 @@ export function SaleDetailPage() {
               </Button>
             )}
             {can("payments.record") && completed && totals.balancePaise > 0 && (
-              <Button onClick={() => setPaying(true)}><Plus /> Record payment</Button>
+              <Button onClick={() => setPaying(true)}><Plus /> Receive payment</Button>
             )}
           </>
         }
       />
       {!completed && (
         <p className="mb-4 rounded-lg border border-[#f6d2cf] bg-destructive-soft px-3 py-2 text-[13px] text-destructive">
-          Cancelled on {formatDateTime(sale.cancelledAt)} — {sale.cancelReason}. Payment history is preserved below; settle any refund outside the system.
+          Cancelled on {formatDateTime(sale.cancelledAt)} — {sale.cancelReason}. Payment history is preserved below; record any refund as a payment voucher (Refund to buyer).
         </p>
       )}
 
@@ -106,10 +126,20 @@ export function SaleDetailPage() {
           <CardHeader className="pb-2"><CardTitle>Payment summary</CardTitle><PaymentStatusBadge status={totals.paymentStatus} /></CardHeader>
           <CardContent>
             <div className="grid grid-cols-3 gap-4">
-              <div><div className="text-xs text-muted-foreground">Sale price</div><div className="text-lg font-semibold tabular">{formatINR(sale.salePricePaise)}</div></div>
+              <div>
+                <div className="text-xs text-muted-foreground">{totals.netPricePaise !== sale.salePricePaise ? "Sale price after returns" : "Sale price"}</div>
+                <div className="text-lg font-semibold tabular">{formatINR(totals.netPricePaise)}</div>
+                {totals.netPricePaise !== sale.salePricePaise && <div className="text-[11px] text-muted-foreground tabular">Originally {formatINR(sale.salePricePaise)}</div>}
+              </div>
               <div><div className="text-xs text-muted-foreground">Received</div><div className="text-lg font-semibold text-success tabular">{formatINR(totals.receivedPaise)}</div></div>
               <div><div className="text-xs text-muted-foreground">Balance due</div><div className={`text-lg font-semibold tabular ${totals.balancePaise > 0 ? "text-warning" : ""}`}>{formatINR(totals.balancePaise)}</div></div>
             </div>
+            {(totals.financePendingPaise > 0 || totals.refundDuePaise > 0) && (
+              <div className="mt-3 flex flex-wrap gap-2 text-xs">
+                {totals.financePendingPaise > 0 && <Badge tone="info">Loan pending from lender: {formatINR(totals.financePendingPaise)}</Badge>}
+                {totals.refundDuePaise > 0 && <Badge tone="danger">Refund due to buyer: {formatINR(totals.refundDuePaise)}</Badge>}
+              </div>
+            )}
             <Progress value={pct} className="mt-4 h-2" indicatorClassName={pct >= 100 ? "bg-success" : "bg-primary"} aria-label={`${pct}% received`} />
             <p className="mt-1.5 text-xs text-muted-foreground tabular">{pct}% received</p>
           </CardContent>
@@ -126,7 +156,8 @@ export function SaleDetailPage() {
                   <TableRow className="hover:bg-transparent">
                     <TableHead>Receipt</TableHead>
                     <TableHead>Date</TableHead>
-                    <TableHead>Method</TableHead>
+                    <TableHead>Mode</TableHead>
+                    <TableHead>Account</TableHead>
                     <TableHead>Reference</TableHead>
                     <TableHead className="text-right">Amount</TableHead>
                     <TableHead><span className="sr-only">Print</span></TableHead>
@@ -141,6 +172,29 @@ export function SaleDetailPage() {
                       </TableCell>
                       <TableCell>{formatDate(p.date)}</TableCell>
                       <TableCell>{PAYMENT_METHOD_LABELS[p.method]}</TableCell>
+                      <TableCell className="max-w-48 text-muted-foreground">
+                        {p.method === "finance" ? (
+                          <div className="grid gap-1">
+                            <span className="text-foreground">{p.lenderName}{p.loanReference && <span className="text-muted-foreground"> · {p.loanReference}</span>}</span>
+                            {p.settledOn ? (
+                              <span className="text-[11px]">Received {formatDate(p.settledOn)} into {accountName(p.settledAccountId)}</span>
+                            ) : financePending(p) > 0 ? (
+                              <span className="flex flex-wrap items-center gap-1.5">
+                                <Badge tone="warning">Pending {formatINR(financePending(p))}</Badge>
+                                {can("payments.record") && (
+                                  <Button variant="link" size="sm" className="h-auto p-0 text-xs" onClick={() => setSettling(p)}>
+                                    <CheckCircle2 /> Mark received
+                                  </Button>
+                                )}
+                              </span>
+                            ) : (
+                              <span className="text-[11px]">Cancelled on return</span>
+                            )}
+                          </div>
+                        ) : (
+                          accountName(p.accountId)
+                        )}
+                      </TableCell>
                       <TableCell className="max-w-40 truncate text-muted-foreground">{p.reference || "—"}</TableCell>
                       <TableCell className="text-right font-medium tabular">{formatINR(p.amountPaise)}</TableCell>
                       <TableCell className="text-right">
@@ -159,6 +213,24 @@ export function SaleDetailPage() {
         </Card>
 
         <div className="grid content-start gap-4">
+          {returns.length > 0 && (
+            <Card>
+              <CardHeader className="pb-1"><CardTitle>Returns</CardTitle><ReturnStatusBadge status={sale.returnStatus} /></CardHeader>
+              <CardContent>
+                <ul className="divide-y text-[13px]">
+                  {returns.map((r) => (
+                    <li key={r.id} className="flex items-center justify-between gap-3 py-2">
+                      <div>
+                        <Link href={`/sales/returns/${r.id}`} className="font-medium text-primary hover:underline">{r.number}</Link>
+                        <div className="text-xs text-muted-foreground">{formatDate(r.date)}{r.vehicleReturned ? " · car returned" : " · price adjustment"}</div>
+                      </div>
+                      <span className="font-medium tabular">{formatINR(r.returnAmountPaise)}</span>
+                    </li>
+                  ))}
+                </ul>
+              </CardContent>
+            </Card>
+          )}
           <Card>
             <CardHeader className="pb-1"><CardTitle>Buyer</CardTitle></CardHeader>
             <CardContent>
@@ -226,6 +298,8 @@ export function SaleDetailPage() {
       {can("payments.record") && (
         <PaymentDialog sale={sale} balancePaise={totals.balancePaise} open={paying} onOpenChange={setPaying} />
       )}
+      {settling && <FinanceSettleDialog payment={settling} open onOpenChange={(o) => !o && setSettling(null)} />}
+      {canReturn && <SalesReturnDialog sale={sale} open={returning} onOpenChange={setReturning} />}
       <ConfirmDialog
         open={cancelling}
         onOpenChange={setCancelling}

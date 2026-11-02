@@ -14,16 +14,13 @@ import { makeSaleSchema, type SaleInput } from "@/lib/validation/schemas";
 import { activeVehicles, vehicleView, type VehicleView } from "@/lib/calculations/selectors";
 import { paymentStatusFor } from "@/lib/calculations/finance";
 import { matchesSearch } from "@/features/inventory/filters";
-import { PAYMENT_METHODS } from "@/types";
 import { PAYMENT_METHOD_LABELS, formatKm, vehicleTitle } from "@/lib/utils/labels";
 import { formatDate, todayISO } from "@/lib/utils/dates";
 import { formatINR } from "@/lib/utils/money";
 import { cn } from "@/lib/utils/cn";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { PageHeader } from "@/components/shared/page-header";
 import { Field } from "@/components/shared/form-field";
 import { CurrencyInput } from "@/components/shared/currency-input";
@@ -35,12 +32,16 @@ import { PaymentStatusBadge, VehicleStatusBadge } from "@/components/shared/stat
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { useUnsavedGuard } from "@/hooks/use-unsaved-guard";
 import { BuyerFields } from "./buyer-fields";
+import { PaymentLinesEditor, sumLines } from "@/features/accounts/payment-lines";
+import { BranchSelect, useMyBranches } from "@/features/branches/branch-select";
+import { accountLabel } from "@/features/accounts/shared";
+import { SALE_PAYMENT_METHODS } from "./payment-dialog";
 
 const STEPS = ["Select vehicle", "Buyer details", "Sale information", "Review", "Confirm"] as const;
 const STEP_FIELDS: FieldPath<SaleInput>[][] = [
   ["vehicleId"],
   ["customerName", "customerPhone", "customerAddress", "customerNotes"],
-  ["saleDate", "salePricePaise", "amountReceivedPaise", "paymentMethod", "paymentReference", "notes"],
+  ["saleDate", "salePricePaise", "payments", "branchId", "notes"],
 ];
 
 export function NewSalePage() {
@@ -78,12 +79,12 @@ export function NewSalePage() {
       customerNotes: "",
       saleDate: todayISO(),
       salePricePaise: preSelectable ? pre.askingPricePaise : (undefined as unknown as number),
-      amountReceivedPaise: 0,
-      paymentMethod: "bank_transfer",
-      paymentReference: "",
+      payments: [],
+      branchId: preSelectable ? (pre.branchId ?? user.branchId ?? null) : (user.branchId ?? null),
       notes: "",
     },
   });
+  const branches = useMyBranches();
   const { errors, isDirty } = form.formState;
   const [leaving, setLeaving] = React.useState(false);
   const dirty = isDirty && !completedSaleId && !saving;
@@ -100,6 +101,7 @@ export function NewSalePage() {
     form.setValue("customerName", c?.name ?? "");
     form.setValue("customerPhone", c?.phone ?? "");
     form.setValue("customerAddress", c?.address ?? "");
+    if (view.vehicle.branchId) form.setValue("branchId", view.vehicle.branchId);
   }
 
   async function next() {
@@ -135,7 +137,7 @@ export function NewSalePage() {
   const candidates = activeVehicles(ds)
     .filter((v) => v.status !== "sold")
     .map((v) => vehicleView(v, idx));
-  const totalReceived = booking + (values.amountReceivedPaise ?? 0);
+  const totalReceived = booking + sumLines(values.payments);
   const balance = Math.max(0, (values.salePricePaise ?? 0) - totalReceived);
 
   return (
@@ -221,29 +223,34 @@ export function NewSalePage() {
                   <CurrencyInput id="ns-booking" value={booking} onChange={() => undefined} disabled />
                 </Field>
               )}
-              <Field label={reservation ? "Amount received now" : "Amount received"} htmlFor="ns-received" error={errors.amountReceivedPaise?.message} required>
-                <Controller control={form.control} name="amountReceivedPaise" render={({ field }) => (
-                  <CurrencyInput id="ns-received" value={field.value} onChange={(v) => field.onChange(v ?? 0)} onBlur={field.onBlur} invalid={!!errors.amountReceivedPaise} />
-                )} />
-              </Field>
-              <Field label="Payment mode" htmlFor="ns-method">
-                <Controller control={form.control} name="paymentMethod" render={({ field }) => (
-                  <Select value={field.value} onValueChange={field.onChange}>
-                    <SelectTrigger id="ns-method"><SelectValue /></SelectTrigger>
-                    <SelectContent>{PAYMENT_METHODS.map((m) => <SelectItem key={m} value={m}>{PAYMENT_METHOD_LABELS[m]}</SelectItem>)}</SelectContent>
-                  </Select>
-                )} />
-              </Field>
-              <Field label="Payment reference" htmlFor="ns-ref" error={errors.paymentReference?.message}>
-                <Input id="ns-ref" placeholder="UTR / UPI / cheque no." {...form.register("paymentReference")} />
-              </Field>
+              {branches.length > 1 && (
+                <Field label="Branch" htmlFor="ns-branch" hint="Cash received goes into this branch's cash in hand.">
+                  <Controller control={form.control} name="branchId" render={({ field }) => (
+                    <BranchSelect id="ns-branch" value={field.value ?? ""} onChange={field.onChange} />
+                  )} />
+                </Field>
+              )}
+              <div className="sm:col-span-2">
+                <h3 className="mb-1 text-[13px] font-medium">{reservation ? "Payments received now" : "Payments received"}</h3>
+                <p className="mb-3 text-xs text-muted-foreground">Split the amount across cash, UPI, bank transfer, cheque or a loan. Anything not received yet stays as balance due.</p>
+                <PaymentLinesEditor
+                  control={form.control}
+                  name="payments"
+                  errors={errors}
+                  methods={SALE_PAYMENT_METHODS}
+                  branchId={values.branchId}
+                  totalPaise={values.salePricePaise ?? 0}
+                  paidBefore={booking}
+                  idPrefix="ns-pay"
+                  labels={{ total: "Sale total", paid: reservation ? "Paid (incl. booking)" : "Paid" }}
+                />
+              </div>
               <Field label="Sale notes" htmlFor="ns-notes" className="sm:col-span-2">
                 <Textarea id="ns-notes" rows={2} {...form.register("notes")} />
               </Field>
-              <div className="grid grid-cols-3 gap-3 rounded-lg bg-muted/60 p-3 text-[13px] sm:col-span-2">
-                <div><div className="text-xs text-muted-foreground">Total received</div><div className="font-semibold tabular">{formatINR(totalReceived)}</div></div>
-                <div><div className="text-xs text-muted-foreground">Balance due</div><div className="font-semibold tabular">{formatINR(balance)}</div></div>
-                <div><div className="text-xs text-muted-foreground">Status</div><PaymentStatusBadge status={paymentStatusFor(values.salePricePaise ?? 0, totalReceived)} /></div>
+              <div className="flex items-center gap-2 text-[13px] sm:col-span-2">
+                <span className="text-muted-foreground">Status</span>
+                <PaymentStatusBadge status={paymentStatusFor(values.salePricePaise ?? 0, totalReceived)} />
               </div>
             </div>
           </div>
@@ -266,7 +273,10 @@ export function NewSalePage() {
                 ["Sale date", formatDate(values.saleDate)],
                 ["Agreed sale price", formatINR(values.salePricePaise ?? 0)],
                 ...(reservation ? [["Booking received", formatINR(booking)]] : []),
-                [reservation ? "Received now" : "Amount received", `${formatINR(values.amountReceivedPaise ?? 0)} · ${PAYMENT_METHOD_LABELS[values.paymentMethod]}`],
+                ...(values.payments ?? []).map((l, i) => [
+                  `Payment ${i + 1}`,
+                  `${formatINR(l.amountPaise ?? 0)} · ${PAYMENT_METHOD_LABELS[l.method]}${l.method === "finance" ? ` · ${l.lenderName}` : l.accountId && idx.accounts.get(l.accountId) ? ` → ${accountLabel(idx.accounts.get(l.accountId)!, ds.branches)}` : ""}`,
+                ]),
                 ["Balance due", formatINR(balance)],
               ].map(([k, val]) => (
                 <div key={k} className="flex justify-between gap-3 sm:block">

@@ -54,7 +54,7 @@ describe("payment status", () => {
   });
   it("derives sale totals only from payment records", () => {
     const t = saleTotals({ id: "s1", salePricePaise: 10_000 }, [pay("s1", 3000), pay("s1", 2000), pay("other", 9999)]);
-    expect(t).toEqual({ salePricePaise: 10_000, receivedPaise: 5000, balancePaise: 5000, paymentStatus: "partial" });
+    expect(t).toEqual({ salePricePaise: 10_000, netPricePaise: 10_000, receivedPaise: 5000, balancePaise: 5000, refundDuePaise: 0, financePendingPaise: 0, paymentStatus: "partial" });
   });
 });
 

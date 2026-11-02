@@ -211,7 +211,7 @@ export function Sidebar() {
   return (
     <aside
       className={cn(
-        "group/sidebar fixed inset-y-0 left-0 z-30 hidden transition-[width] duration-200 lg:block",
+        "no-print group/sidebar fixed inset-y-0 left-0 z-30 hidden transition-[width] duration-200 lg:block",
         collapsed ? "w-[68px]" : "w-60",
       )}
     >

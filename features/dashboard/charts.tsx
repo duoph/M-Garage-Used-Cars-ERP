@@ -13,7 +13,7 @@ import {
   YAxis,
 } from "recharts";
 import { formatINR, formatINRCompact } from "@/lib/utils/money";
-import { EXPENSE_CATEGORY_LABELS } from "@/lib/utils/labels";
+import { EXPENSE_CATEGORY_LABELS, VEHICLE_STATUS_LABELS } from "@/lib/utils/labels";
 import type { MonthlyPoint } from "@/lib/calculations/selectors";
 import type { ExpenseCategory, VehicleStatus } from "@/types";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
@@ -89,11 +89,12 @@ export function SalesPerformanceChart({ data, showProfit }: { data: MonthlyPoint
   );
 }
 
-const STATUS_COLORS: Record<VehicleStatus, string> = { available: "#059669", reserved: "#d97706", sold: "#94a3b8" };
-const STATUS_LABELS: Record<VehicleStatus, string> = { available: "Available", reserved: "Reserved", sold: "Sold" };
+const STATUS_COLORS: Record<VehicleStatus, string> = { available: "#059669", reserved: "#d97706", sold: "#94a3b8", returned_inspection: "#2948b8", returned_to_supplier: "#dc2626" };
+const STATUS_LABELS: Record<VehicleStatus, string> = VEHICLE_STATUS_LABELS;
 
 export function InventoryStatusChart({ counts }: { counts: Record<VehicleStatus, number> }) {
-  const data = (Object.keys(counts) as VehicleStatus[]).map((s) => ({ status: s, value: counts[s] }));
+  // Cars sent back to their seller have left the showroom; empty statuses add nothing to the chart.
+  const data = (Object.keys(counts) as VehicleStatus[]).filter((s) => s !== "returned_to_supplier" && (s !== "returned_inspection" || counts[s] > 0)).map((s) => ({ status: s, value: counts[s] }));
   const total = data.reduce((a, d) => a + d.value, 0);
   if (total === 0)
     return <EmptyState icon={BarChart3} title="No vehicles yet" description="Add a purchase to start tracking stock." className="py-10" />;

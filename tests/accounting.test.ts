@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { DealerDatabase } from "@/lib/db/database";
-import { defaultAccounts } from "@/lib/db/bootstrap";
+import { readDataset } from "@/lib/db/dataset";
 import { DEMO_USER_IDS, seedDatabase } from "./fixtures/demo-seed";
 import { createDealerService } from "@/lib/services/dealer-service";
 import { BusinessError, type DealerCommands } from "@/lib/repositories/contracts";
@@ -17,12 +17,7 @@ let admin: User;
 let sales: User;
 
 async function snapshot(): Promise<Dataset> {
-  const [users, vehicles, purchases, images, customers, reservations, salesRows, payments, expenses, accounts, vouchers, documents, activity, settings] = await Promise.all([
-    db.users.toArray(), db.vehicles.toArray(), db.purchases.toArray(), db.vehicleImages.toArray(), db.customers.toArray(), db.reservations.toArray(),
-    db.sales.toArray(), db.salePayments.toArray(), db.expenses.toArray(), db.accounts.toArray(), db.vouchers.toArray(), db.documents.toArray(),
-    db.activity.toArray(), db.settings.get("business"),
-  ]);
-  return { users, vehicles, purchases, images, customers, reservations, sales: salesRows, payments, expenses, accounts, vouchers, documents, activity, settings: settings! };
+  return (await readDataset(db))!;
 }
 
 const voucher = (over: Partial<VoucherInput>): VoucherInput => ({
@@ -34,7 +29,6 @@ const voucher = (over: Partial<VoucherInput>): VoucherInput => ({
 beforeEach(async () => {
   db = new DealerDatabase(`acc-${Math.random()}`);
   await seedDatabase(db);
-  await db.accounts.bulkAdd(defaultAccounts());
   svc = createDealerService(() => db, null);
   admin = (await db.users.get(DEMO_USER_IDS.admin))!;
   sales = (await db.users.get(DEMO_USER_IDS.sales))!;
@@ -44,10 +38,14 @@ describe("cash book", () => {
   it("routes cash to the cash account and everything else to the bank", async () => {
     const ds = await snapshot();
     const entries = moneyEntries(ds, indexDataset(ds));
-    for (const e of entries.filter((x) => x.method)) expect(e.accountId).toBe(e.method === "cash" ? "acc-cash" : "acc-bank");
+    // Older expenses have no "Paid from" yet and stay Unassigned rather than guessing.
+    for (const e of entries.filter((x) => x.method && x.source !== "expense")) expect(e.accountId).toBe(e.method === "cash" ? "acc-cash" : "acc-bank");
+    expect(entries.filter((x) => x.source === "expense").every((e) => e.accountId === "unassigned")).toBe(true);
   });
 
   it("moves money between accounts with a contra without changing the total", async () => {
+    const cash = (await db.accounts.get("acc-cash"))!;
+    await svc.updateAccount(admin, cash.id, { ...cash, openingBalancePaise: 10_00_000_00, openingDate: "2025-01-01" });
     const before = await snapshot();
     const totalBefore = accountSummaries(before.accounts, moneyEntries(before, indexDataset(before))).reduce((s, a) => s + a.balancePaise, 0);
     await svc.createVoucher(admin, voucher({ type: "contra", head: "transfer", accountId: "acc-cash", toAccountId: "acc-bank", amountPaise: 5_000_00, partyName: "" }));
@@ -58,6 +56,15 @@ describe("cash book", () => {
     expect(sums.find((a) => a.account.id === "acc-cash")!.balancePaise).toBe(cashBefore - 5_000_00);
   });
 
+  it("refuses a transfer that would take a branch's cash below zero", async () => {
+    const ds = await snapshot();
+    const cash = ds.ledger.filter((e) => e.accountId === "acc-cash").reduce((s, e) => s + (e.direction === "in" ? e.amountPaise : -e.amountPaise), 0);
+    await expect(
+      svc.createVoucher(admin, voucher({ type: "contra", head: "transfer", accountId: "acc-cash", toAccountId: "acc-owner", amountPaise: Math.max(cash, 0) + 1_00, partyName: "" })),
+    ).rejects.toThrow(/enough cash/);
+    expect(await db.vouchers.count()).toBe(0);
+  });
+
   it("rejects a contra into the same account", async () => {
     await expect(svc.createVoucher(admin, voucher({ type: "contra", head: "transfer", toAccountId: "acc-cash", partyName: "" }))).rejects.toBeInstanceOf(BusinessError);
   });
@@ -65,7 +72,9 @@ describe("cash book", () => {
 
 describe("seller payments", () => {
   it("settles the purchase balance and is reversed on cancel, without double counting", async () => {
-    const owed = (await db.purchases.toArray()).find((p) => p.status === "active" && p.purchasePricePaise > p.amountPaidPaise)!;
+    // An unsold car, so editing its figures needs no admin correction reason.
+    const vehicles = await db.vehicles.toArray();
+    const owed = (await db.purchases.toArray()).find((p) => p.status === "active" && p.purchasePricePaise > p.amountPaidPaise && vehicles.find((v) => v.id === p.vehicleId)?.status !== "sold")!;
     const balance = owed.purchasePricePaise - owed.amountPaidPaise;
     const ds0 = await snapshot();
     const out0 = moneyEntries(ds0, indexDataset(ds0)).filter((e) => e.direction === "out").reduce((s, e) => s + e.amountPaise, 0);

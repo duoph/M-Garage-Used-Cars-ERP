@@ -29,6 +29,10 @@ const ENTITY_LABELS: Record<EntityType, string> = {
   account: "Cash & bank accounts",
   voucher: "Vouchers",
   document: "Documents",
+  branch: "Branches",
+  sales_return: "Sales returns",
+  purchase_return: "Purchase returns",
+  day_close: "Day close",
 };
 
 export function ActivityPage() {

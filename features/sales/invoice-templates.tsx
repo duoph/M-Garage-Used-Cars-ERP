@@ -58,7 +58,8 @@ function vehicleLines(v: Vehicle): { label: string; value: string }[] {
 }
 
 function paymentLabel(p: SalePayment) {
-  return `${formatDate(p.date, "dd MMM yyyy")}, ${PAYMENT_METHOD_LABELS[p.method]}, ${p.receiptNumber}`;
+  const detail = p.method === "finance" ? ` (${p.lenderName || "lender"}${p.loanReference ? `, ${p.loanReference}` : ""})` : p.reference ? ` (${p.reference})` : "";
+  return `${formatDate(p.date, "dd-MM-yyyy")}, ${PAYMENT_METHOD_LABELS[p.method]}${detail}, ${p.receiptNumber}`;
 }
 
 function Cancelled({ sale }: { sale: Sale }) {

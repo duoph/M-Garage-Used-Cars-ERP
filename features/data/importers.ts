@@ -7,9 +7,11 @@ import {
   type ExpenseCategory,
   type FuelType,
   type PaymentMethod,
+  type MoneyAccount,
   type Transmission,
   type Vehicle,
 } from "@/types";
+import { resolveAccountId } from "@/lib/calculations/ledger";
 import { expenseSchema, purchaseFormSchema, type ExpenseInput, type PurchaseFormInput } from "@/lib/validation/schemas";
 import { EXPENSE_CATEGORY_LABELS, FUEL_LABELS, PAYMENT_METHOD_LABELS, TRANSMISSION_LABELS } from "@/lib/utils/labels";
 import { normalizeChassis, normalizeRegistration } from "@/lib/utils/ids";
@@ -185,6 +187,7 @@ const EXPENSE_FIELDS: FieldSpec[] = [
   { key: "amountPaise", header: "Amount", aliases: ["amount paid", "cost", "total"], required: true, example: 8500, coerce: money("Amount") },
   { key: "vendor", header: "Vendor", aliases: ["paid to", "supplier", "shop", "workshop"], example: "City Auto Works", coerce: text },
   { key: "paymentMethod", header: "Payment Method", aliases: ["payment mode", "paid by", "mode"], example: "UPI", coerce: paymentMethod("cash") },
+  { key: "paidFrom", header: "Paid From", aliases: ["account", "paid from account", "bank", "cash account"], example: "Main bank account", hint: "Cash or bank account name; blank = the default for the payment method", coerce: text },
   { key: "registration", header: "Vehicle Registration", aliases: ["vehicle", "registration", "reg no", "vehicle number", "car"], example: "KL 07 CD 4521", hint: "Required for vehicle categories", coerce: text },
   { key: "notes", header: "Notes", aliases: ["remarks", "comments"], example: "", coerce: text },
 ];
@@ -231,6 +234,8 @@ function firstIssue(error: { issues: { message: string; path: PropertyKey[] }[] 
 
 export interface ImportContext {
   vehicles: readonly Vehicle[];
+  /** Cash and bank accounts, to match "Paid From". */
+  accounts?: readonly MoneyAccount[];
 }
 
 /** Turns sheet rows into validated inputs. The first non-empty row is the header. */
@@ -282,7 +287,19 @@ export function planImport(kind: ImportKind, sheet: Cell[][], ctx: ImportContext
     const reg = String(v.registration ?? "");
     const vehicle = reg ? active.find((x) => normalizeRegistration(x.registrationNumber) === normalizeRegistration(reg)) : undefined;
     if (reg && !vehicle) return { line, error: `No car with registration ${reg} in stock`, label: label(v) };
-    const parsed = expenseSchema.safeParse({ ...v, vehicleId: vehicle?.id ?? null });
+    const paidFrom = String(v.paidFrom ?? "").trim().toLowerCase();
+    const accounts = (ctx.accounts ?? []).filter((a) => !a.archived && (a.kind === "cash" || a.kind === "bank"));
+    const named = paidFrom ? accounts.find((a) => a.name.toLowerCase() === paidFrom) : undefined;
+    if (paidFrom && !named) return { line, error: `No cash or bank account called ${String(v.paidFrom)}`, label: label(v) };
+    const method = (v.paymentMethod ?? "cash") as PaymentMethod;
+    const accountId = named?.id ?? resolveAccountId(accounts, null, method);
+    const parsed = expenseSchema.safeParse({
+      ...v,
+      accountId,
+      // A cash account means the expense was paid in cash; a bank account can't take cash.
+      paymentMethod: named?.kind === "cash" ? "cash" : named?.kind === "bank" && method === "cash" ? "bank_transfer" : method,
+      vehicleId: vehicle?.id ?? null,
+    });
     if (!parsed.success) return { line, error: firstIssue(parsed.error, fields), label: label(v) };
     return { line, input: parsed.data, label: label(v) };
   });

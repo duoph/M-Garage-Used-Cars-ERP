@@ -1,16 +1,23 @@
 import Dexie, { type EntityTable } from "dexie";
 import type {
   ActivityLog,
+  Branch,
   BusinessSettings,
   Counter,
   Customer,
+  DayClose,
   Expense,
   ImageBlobRecord,
+  LedgerEntry,
   MoneyAccount,
   Purchase,
+  PurchasePayment,
+  PurchaseReturn,
   Reservation,
+  ReturnRefund,
   Sale,
   SalePayment,
+  SalesReturn,
   StoredDocument,
   User,
   Vehicle,
@@ -37,6 +44,13 @@ export class DealerDatabase extends Dexie {
   accounts!: EntityTable<MoneyAccount, "id">;
   vouchers!: EntityTable<Voucher, "id">;
   documents!: EntityTable<StoredDocument, "id">;
+  branches!: EntityTable<Branch, "id">;
+  purchasePayments!: EntityTable<PurchasePayment, "id">;
+  salesReturns!: EntityTable<SalesReturn, "id">;
+  purchaseReturns!: EntityTable<PurchaseReturn, "id">;
+  returnRefunds!: EntityTable<ReturnRefund, "id">;
+  ledgerEntries!: EntityTable<LedgerEntry, "key">;
+  dayCloses!: EntityTable<DayClose, "id">;
   activity!: EntityTable<ActivityLog, "id">;
   settings!: EntityTable<BusinessSettings, "id">;
   counters!: EntityTable<Counter, "key">;
@@ -68,6 +82,23 @@ export class DealerDatabase extends Dexie {
       vouchers: "id, type, date, accountId, toAccountId, purchaseId, saleId, status, number",
       documents: "id, [ownerType+ownerId], vehicleId, kind",
     });
+    // Branches, the stored ledger, purchase payment lines and returns. Existing rows are moved onto the
+    // main branch and the ledger is filled by `migrateAccounting` (lib/db/migrate.ts) on the next load.
+    this.version(5).stores({
+      branches: "id",
+      vehicles: "id, purchaseId, status, registrationNumber, chassisNumber, createdAt, branchId",
+      purchases: "id, vehicleId, purchaseDate, status, reference, branchId",
+      sales: "id, vehicleId, customerId, saleDate, status, reference, branchId",
+      salePayments: "id, saleId, date, accountId",
+      expenses: "id, vehicleId, date, category, accountId, branchId",
+      accounts: "id, kind, branchId",
+      purchasePayments: "id, purchaseId, date, accountId",
+      salesReturns: "id, saleId, vehicleId, date, branchId, number",
+      purchaseReturns: "id, purchaseId, vehicleId, date, branchId, number",
+      returnRefunds: "id, [returnType+returnId], date, accountId",
+      ledgerEntries: "key, date, accountId, branchId, source, [accountId+date], [branchId+date]",
+      dayCloses: "id, [branchId+date], date",
+    });
   }
 }
 
@@ -96,6 +127,13 @@ export const DATA_TABLES = [
   "accounts",
   "vouchers",
   "documents",
+  "branches",
+  "purchasePayments",
+  "salesReturns",
+  "purchaseReturns",
+  "returnRefunds",
+  "ledgerEntries",
+  "dayCloses",
   "activity",
   "settings",
   "counters",

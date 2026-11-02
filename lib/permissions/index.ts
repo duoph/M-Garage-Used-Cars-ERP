@@ -127,6 +127,23 @@ export function canAny(subject: PermissionSubject, permissions: readonly Permiss
   return permissions.some((p) => can(subject, p));
 }
 
+/**
+ * Admins and managers see every branch by default; everyone else only their home branch. An admin can
+ * widen or narrow this per person (`allBranches`). Admins always see everything.
+ */
+export function seesAllBranches(user: Pick<User, "role" | "allBranches"> | null | undefined): boolean {
+  if (!user) return false;
+  if (user.role === "admin") return true;
+  if (user.allBranches !== undefined && user.allBranches !== null) return user.allBranches;
+  return user.role === "manager";
+}
+
+/** Branch ids a person may see, or null for every branch. */
+export function branchScope(user: Pick<User, "role" | "allBranches" | "branchId"> | null | undefined): string[] | null {
+  if (seesAllBranches(user)) return null;
+  return user?.branchId ? [user.branchId] : [];
+}
+
 /** Permissions grouped and described for the access editor on the Staff page. */
 export const PERMISSION_GROUPS: { label: string; items: { permission: Permission; label: string }[] }[] = [
   {
@@ -192,6 +209,11 @@ export const PERMISSION_GROUPS: { label: string; items: { permission: Permission
 export const ROUTE_PERMISSIONS: { prefix: string; permission: Permission }[] = [
   { prefix: "/inventory", permission: "inventory.view" },
   { prefix: "/purchases/new", permission: "purchases.manage" },
+  { prefix: "/purchases/returns", permission: "purchases.view" },
+  { prefix: "/sales/returns", permission: "sales.view" },
+  { prefix: "/credit-note", permission: "receipts.print" },
+  { prefix: "/debit-note", permission: "purchases.view" },
+  { prefix: "/reports/accounts", permission: "accounts.view" },
   { prefix: "/purchases", permission: "purchases.view" },
   { prefix: "/sales/new", permission: "sales.create" },
   { prefix: "/sales", permission: "sales.view" },

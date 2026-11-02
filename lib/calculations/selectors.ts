@@ -1,7 +1,14 @@
 import { format, parseISO, startOfMonth, subMonths } from "date-fns";
 import type {
   ActivityLog,
+  Branch,
   BusinessSettings,
+  DayClose,
+  LedgerEntry,
+  PurchasePayment,
+  PurchaseReturn,
+  ReturnRefund,
+  SalesReturn,
   Customer,
   Expense,
   ExpenseCategory,
@@ -40,6 +47,23 @@ export interface Dataset {
   documents: StoredDocument[];
   activity: ActivityLog[];
   settings: BusinessSettings;
+  branches: Branch[];
+  /** The stored ledger: every money movement, already posted to its account. */
+  ledger: LedgerEntry[];
+  purchasePayments: PurchasePayment[];
+  salesReturns: SalesReturn[];
+  purchaseReturns: PurchaseReturn[];
+  refunds: ReturnRefund[];
+  dayCloses: DayClose[];
+}
+
+/** Optional tables default to empty, so partial snapshots (tests, posting) can be indexed. */
+export function emptyDataset(settings: BusinessSettings): Dataset {
+  return {
+    users: [], vehicles: [], purchases: [], images: [], customers: [], reservations: [], sales: [], payments: [], expenses: [],
+    accounts: [], vouchers: [], documents: [], activity: [], settings, branches: [], ledger: [], purchasePayments: [],
+    salesReturns: [], purchaseReturns: [], refunds: [], dayCloses: [],
+  };
 }
 
 export interface DatasetIndex {
@@ -55,6 +79,12 @@ export interface DatasetIndex {
   salesByVehicle: Map<ID, Sale[]>;
   activeReservationByVehicle: Map<ID, Reservation>;
   reservationsByVehicle: Map<ID, Reservation[]>;
+  branches: Map<ID, Branch>;
+  accounts: Map<ID, MoneyAccount>;
+  purchasePaymentsByPurchase: Map<ID, PurchasePayment[]>;
+  salesReturnsBySale: Map<ID, SalesReturn[]>;
+  purchaseReturnsByPurchase: Map<ID, PurchaseReturn[]>;
+  refundsByReturn: Map<ID, ReturnRefund[]>;
 }
 
 function group<T>(items: readonly T[], key: (t: T) => ID | null): Map<ID, T[]> {
@@ -85,10 +115,17 @@ export function indexDataset(ds: Dataset): DatasetIndex {
     imagesByVehicle,
     expensesByVehicle: group(ds.expenses, (e) => e.vehicleId),
     paymentsBySale,
-    completedSaleByVehicle: new Map(ds.sales.filter((s) => s.status === "completed").map((s) => [s.vehicleId, s])),
+    // A sale whose car came back no longer owns the car; it can be sold again.
+    completedSaleByVehicle: new Map(ds.sales.filter((s) => s.status === "completed" && s.returnStatus !== "returned").map((s) => [s.vehicleId, s])),
     salesByVehicle: group(ds.sales, (s) => s.vehicleId),
     activeReservationByVehicle: new Map(ds.reservations.filter((r) => r.status === "active").map((r) => [r.vehicleId, r])),
     reservationsByVehicle: group(ds.reservations, (r) => r.vehicleId),
+    branches: new Map(ds.branches.map((b) => [b.id, b])),
+    accounts: new Map(ds.accounts.map((a) => [a.id, a])),
+    purchasePaymentsByPurchase: group(ds.purchasePayments, (p) => p.purchaseId),
+    salesReturnsBySale: group(ds.salesReturns, (r) => r.saleId),
+    purchaseReturnsByPurchase: group(ds.purchaseReturns, (r) => r.purchaseId),
+    refundsByReturn: group(ds.refunds, (r) => r.returnId),
   };
 }
 
@@ -120,7 +157,7 @@ export function vehicleView(v: Vehicle, idx: DatasetIndex, now: Date = new Date(
   const purchasePrice = purchase?.purchasePricePaise ?? 0;
   const sale = idx.completedSaleByVehicle.get(v.id);
   const totals = sale ? saleTotals(sale, idx.paymentsBySale.get(sale.id) ?? []) : undefined;
-  const profitPaise = sale ? grossProfit(sale.salePricePaise, purchasePrice, expensesPaise) : null;
+  const profitPaise = sale ? saleProfit(sale, purchasePrice, expensesPaise) : null;
   const reservation = idx.activeReservationByVehicle.get(v.id);
   const acquired = purchase?.purchaseDate ?? v.createdAt;
   const stockAgeDays = sale
@@ -137,12 +174,26 @@ export function vehicleView(v: Vehicle, idx: DatasetIndex, now: Date = new Date(
     sale,
     saleTotals: totals,
     profitPaise,
-    marginPct: sale && profitPaise !== null ? grossMarginPct(profitPaise, sale.salePricePaise) : null,
+    marginPct: sale && profitPaise !== null ? grossMarginPct(profitPaise, netSalePrice(sale)) : null,
     reservation,
     reservationCustomer: reservation ? idx.customers.get(reservation.customerId) : undefined,
     buyer: sale ? idx.customers.get(sale.customerId) : undefined,
     stockAgeDays,
   };
+}
+
+/** Sale price less what sales returns gave back. */
+export function netSalePrice(sale: Sale): Paise {
+  return sale.salePricePaise - (sale.returnedPaise ?? 0);
+}
+
+/**
+ * Profit on a sale after returns. When the car itself came back it is stock again, so its cost is not
+ * charged; only the deductions kept on the return remain as income.
+ */
+export function saleProfit(sale: Sale, purchasePricePaise: Paise, vehicleExpensesPaise: Paise): Paise {
+  if (sale.returnStatus === "returned") return netSalePrice(sale);
+  return grossProfit(netSalePrice(sale), purchasePricePaise, vehicleExpensesPaise);
 }
 
 /** Active (non-archived) vehicles, newest first. */
@@ -169,7 +220,7 @@ export function saleView(sale: Sale, idx: DatasetIndex): SaleView {
   const payments = idx.paymentsBySale.get(sale.id) ?? [];
   const vehicleExpensesPaise = sumPaise((idx.expensesByVehicle.get(sale.vehicleId) ?? []).map((e) => e.amountPaise));
   const purchasePricePaise = purchase?.purchasePricePaise ?? 0;
-  const profitPaise = grossProfit(sale.salePricePaise, purchasePricePaise, vehicleExpensesPaise);
+  const profitPaise = saleProfit(sale, purchasePricePaise, vehicleExpensesPaise);
   return {
     sale,
     vehicle,
@@ -180,7 +231,7 @@ export function saleView(sale: Sale, idx: DatasetIndex): SaleView {
     purchasePricePaise,
     vehicleExpensesPaise,
     profitPaise,
-    marginPct: grossMarginPct(profitPaise, sale.salePricePaise),
+    marginPct: grossMarginPct(profitPaise, netSalePrice(sale)),
   };
 }
 
@@ -231,14 +282,15 @@ export interface PeriodSummary {
 
 export function periodSummary(ds: Dataset, idx: DatasetIndex, range: Pick<DateRange, "from" | "to">): PeriodSummary {
   const sales = ds.sales.filter((s) => s.status === "completed" && inRange(s.saleDate, range));
+  const soldCount = sales.filter((s) => s.returnStatus !== "returned").length;
   const views = sales.map((s) => saleView(s, idx));
   const expenses = ds.expenses.filter((e) => inRange(e.date, range));
   const operating = sumPaise(expenses.filter((e) => !isVehicleExpense(e)).map((e) => e.amountPaise));
   const grossProfitPaise = sumPaise(views.map((v) => v.profitPaise));
   const purchases = ds.purchases.filter((p) => p.status === "active" && inRange(p.purchaseDate, range));
   return {
-    soldCount: sales.length,
-    revenuePaise: sumPaise(sales.map((s) => s.salePricePaise)),
+    soldCount,
+    revenuePaise: sumPaise(sales.map(netSalePrice)),
     receivedPaise: sumPaise(views.map((v) => v.totals.receivedPaise)),
     grossProfitPaise,
     operatingExpensesPaise: operating,
@@ -277,7 +329,7 @@ export function monthlySeries(ds: Dataset, idx: DatasetIndex, months = 6, now: D
     const p = byKey.get(s.saleDate.slice(0, 7));
     if (!p) continue;
     const v = saleView(s, idx);
-    p.revenuePaise += s.salePricePaise;
+    p.revenuePaise += netSalePrice(s);
     p.profitPaise += v.profitPaise;
     p.count += 1;
   }
@@ -305,9 +357,12 @@ export function expenseBreakdown(
 
 export function statusCounts(ds: Dataset): Record<VehicleStatus, number> {
   const active = ds.vehicles.filter((v) => !v.archivedAt);
+  const count = (s: VehicleStatus) => active.filter((v) => v.status === s).length;
   return {
-    available: active.filter((v) => v.status === "available").length,
-    reserved: active.filter((v) => v.status === "reserved").length,
-    sold: active.filter((v) => v.status === "sold").length,
+    available: count("available"),
+    reserved: count("reserved"),
+    sold: count("sold"),
+    returned_inspection: count("returned_inspection"),
+    returned_to_supplier: count("returned_to_supplier"),
   };
 }

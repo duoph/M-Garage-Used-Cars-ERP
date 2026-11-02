@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { DealerDatabase } from "@/lib/db/database";
+import { readDataset } from "@/lib/db/dataset";
 import { buildDemoData, DEMO_USER_IDS, EXTRA_DEMO_VEHICLES, seedDatabase } from "./fixtures/demo-seed";
 import { createDealerService } from "@/lib/services/dealer-service";
 import { BusinessError, type DealerCommands } from "@/lib/repositories/contracts";
@@ -23,11 +24,7 @@ const purchaseInput = (over: Partial<PurchaseFormInput> = {}): PurchaseFormInput
 const buyer = { customerName: "Anand Pillai", customerPhone: "9000000001", customerAddress: "Kochi", customerNotes: "" };
 
 async function snapshot(): Promise<Dataset> {
-  const [users, vehicles, purchases, images, customers, reservations, salesRows, payments, expenses, activity, settings] = await Promise.all([
-    db.users.toArray(), db.vehicles.toArray(), db.purchases.toArray(), db.vehicleImages.toArray(), db.customers.toArray(),
-    db.reservations.toArray(), db.sales.toArray(), db.salePayments.toArray(), db.expenses.toArray(), db.activity.toArray(), db.settings.get("business"),
-  ]);
-  return { users, vehicles, purchases, images, customers, reservations, sales: salesRows, payments, expenses, accounts: [], vouchers: [], documents: [], activity, settings: settings! };
+  return (await readDataset(db))!;
 }
 
 beforeEach(async () => {
@@ -98,7 +95,7 @@ describe("purchase → inventory", () => {
 
   it("enforces permissions server-side style in the service", async () => {
     await expect(svc.createPurchase(sales, purchaseInput(), [])).rejects.toThrow(/permission/);
-    await expect(svc.createExpense(sales, { category: "rent", amountPaise: 100, date: "2026-01-01", description: "Rent", vendor: "", paymentMethod: "cash", vehicleId: null, notes: "" })).rejects.toThrow(/permission/);
+    await expect(svc.createExpense(sales, { category: "rent", amountPaise: 100, date: "2026-01-01", description: "Rent", vendor: "", paymentMethod: "cash", accountId: "acc-cash", vehicleId: null, notes: "" })).rejects.toThrow(/permission/);
   });
 });
 
@@ -154,7 +151,7 @@ describe("reservation and sale", () => {
 describe("expenses and profit", () => {
   it("vehicle expenses change landed cost and profit; general expenses do not", async () => {
     const { vehicleId } = await svc.createPurchase(admin, purchaseInput(), []);
-    await svc.createExpense(accountant, { category: "painting", amountPaise: 15_000_00, date: "2026-01-06", description: "Repaint", vendor: "", paymentMethod: "cash", vehicleId, notes: "" });
+    await svc.createExpense(accountant, { category: "painting", amountPaise: 15_000_00, date: "2026-01-06", description: "Repaint", vendor: "", paymentMethod: "cash", accountId: "acc-cash", vehicleId, notes: "" });
     await svc.completeSale(sales, { ...buyer, vehicleId, reservationId: null, saleDate: "2026-01-08", salePricePaise: 7_00_000_00, amountReceivedPaise: 0, paymentMethod: "cash", paymentReference: "", notes: "" });
 
     let ds = await snapshot();
@@ -162,7 +159,7 @@ describe("expenses and profit", () => {
     expect(view.landedCostPaise).toBe(6_15_000_00);
     expect(view.profitPaise).toBe(85_000_00);
 
-    await svc.createExpense(accountant, { category: "rent", amountPaise: 85_000_00, date: "2026-01-08", description: "Rent", vendor: "", paymentMethod: "upi", vehicleId: null, notes: "" });
+    await svc.createExpense(accountant, { category: "rent", amountPaise: 85_000_00, date: "2026-01-08", description: "Rent", vendor: "", paymentMethod: "upi", accountId: "acc-bank", vehicleId: null, notes: "" });
     ds = await snapshot();
     const idx = indexDataset(ds);
     view = vehicleView(ds.vehicles.find((v) => v.id === vehicleId)!, idx);
@@ -192,7 +189,7 @@ describe("staff access and designations", () => {
     expect((await db.activity.toArray()).some((a) => a.action === "user.access_changed")).toBe(true);
 
     // The custom list is now enforced by the service, not just the UI.
-    await expect(svc.createExpense(user, { category: "rent", amountPaise: 100, date: "2026-01-05", description: "x", vendor: "", paymentMethod: "cash", notes: "", vehicleId: null })).rejects.toThrow(BusinessError);
+    await expect(svc.createExpense(user, { category: "rent", amountPaise: 100, date: "2026-01-05", description: "x", vendor: "", paymentMethod: "cash", accountId: "acc-cash", notes: "", vehicleId: null })).rejects.toThrow(BusinessError);
 
     // Saving without touching access keeps it.
     await svc.updateUser(admin, sales.id, { ...base, name: "Rahul V" });

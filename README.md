@@ -69,6 +69,16 @@ Key rules:
 - **Money is integer paise** everywhere; rupees only exist at the input/display boundary.
 - **Derived, not duplicated:** amount received, balance and payment status are computed from payment
   records; landed cost and profit from purchase + vehicle expenses.
+- **One ledger:** every money movement (each sale payment line, seller payment, expense, refund, transfer,
+  loan receipt) is posted to the `ledgerEntries` table in the same transaction as the record that caused it.
+  The posting rules live in `lib/calculations/ledger.ts` (`moneyEntries`); `lib/services/ledger-posting.ts`
+  writes only the rows that changed and refuses changes on a closed day. Balances, the day book and every
+  money report (`lib/calculations/reports.ts`) read only that table.
+- **Accounts and branches:** each branch has its own cash in hand; bank, owner and lender ("loan due")
+  accounts are shared. Expenses must say where they were paid from; older ones show as Unassigned.
+  Branch staff see only their branch (UI-level until a server filters data).
+- **Returns:** sales returns (CN-…) and purchase returns (DN-…) change stock status, the sale/purchase
+  balance and any refund due in one transaction; refunds are payment lines from or into an account.
 - **Gross profit = sale price − purchase price − vehicle-specific expenses.** General showroom expenses
   are reported separately and never reduce per-car profit.
 - Every business command (purchase, reserve, sell, pay, expense, user change…) runs in one IndexedDB

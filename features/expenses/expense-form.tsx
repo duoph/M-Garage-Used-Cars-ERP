@@ -13,6 +13,7 @@ import { DateField } from "@/components/shared/date-field";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { AccountSelect, useDefaultAccountId } from "@/features/accounts/shared";
+import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectSeparator, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 export const EXPENSE_FORM_ID = "expense-form";
@@ -26,7 +27,8 @@ export function ExpenseForm({
   lockVehicle?: boolean;
   onSubmit: (values: ExpenseInput) => Promise<void>;
 }) {
-  const { ds } = useData();
+  const { ds, idx } = useData();
+  const bankDefault = useDefaultAccountId("upi");
   const form = useForm<ExpenseInput>({
     resolver: zodResolver(expenseSchema),
     defaultValues: {
@@ -38,15 +40,21 @@ export function ExpenseForm({
       paymentMethod: "upi",
       vehicleId: null,
       notes: "",
+      paymentReference: "",
       ...defaultValues,
+      // New expenses start on the default bank account; an older expense without one must be assigned.
+      accountId: defaultValues && "accountId" in defaultValues ? (defaultValues.accountId ?? "") : bankDefault,
     },
   });
   const { register, control, handleSubmit, setValue, formState } = form;
   const errors = formState.errors;
   const category = useWatch({ control, name: "category" });
   const vehicleSpecific = isVehicleCategory(category);
-  const method = useWatch({ control, name: "paymentMethod" });
-  const defaultAccount = useDefaultAccountId(method);
+  const accountId = useWatch({ control, name: "accountId" });
+  const account = accountId ? idx.accounts.get(accountId) : undefined;
+  const unassigned = !!defaultValues && "accountId" in defaultValues && !defaultValues.accountId;
+  // The mode follows the account: cash in hand pays in cash; a bank pays by UPI, transfer, cheque or card.
+  const methods = PAYMENT_METHODS.filter((m) => m !== "finance" && (!account || (account.kind === "cash") === (m === "cash")));
 
   const vehicles = ds.vehicles
     .filter((v) => !v.archivedAt)
@@ -135,29 +143,53 @@ export function ExpenseForm({
       <Field label="Date" htmlFor="exp-date" error={errors.date?.message} required>
         <DateField id="exp-date" max={todayISO()} invalid={!!errors.date} {...register("date")} />
       </Field>
-      <Field label="Payment method" htmlFor="exp-method" error={errors.paymentMethod?.message}>
+      <Field
+        label="Paid from"
+        htmlFor="exp-account"
+        error={errors.accountId?.message}
+        required
+        hint={unassigned && !accountId ? <Badge tone="warning">Unassigned — pick the account this was paid from</Badge> : "A branch's cash in hand or a bank account. Its balance goes down by this amount."}
+        className="sm:col-span-2"
+      >
+        <Controller
+          control={control}
+          name="accountId"
+          render={({ field }) => (
+            <AccountSelect
+              id="exp-account"
+              value={field.value || null}
+              invalid={!!errors.accountId}
+              placeholder="Choose cash or bank account"
+              onChange={(id) => {
+                field.onChange(id);
+                const next = idx.accounts.get(id);
+                const current = form.getValues("paymentMethod");
+                if (next?.kind === "cash") setValue("paymentMethod", "cash");
+                else if (next && current === "cash") setValue("paymentMethod", "upi");
+              }}
+            />
+          )}
+        />
+      </Field>
+      <Field label="Payment mode" htmlFor="exp-method" error={errors.paymentMethod?.message}>
         <Controller
           control={control}
           name="paymentMethod"
           render={({ field }) => (
-            <Select value={field.value} onValueChange={(v) => { field.onChange(v); setValue("accountId", null); }}>
+            <Select value={field.value} onValueChange={field.onChange}>
               <SelectTrigger id="exp-method"><SelectValue /></SelectTrigger>
               <SelectContent>
-                {PAYMENT_METHODS.map((m) => <SelectItem key={m} value={m}>{PAYMENT_METHOD_LABELS[m]}</SelectItem>)}
+                {methods.map((m) => <SelectItem key={m} value={m}>{PAYMENT_METHOD_LABELS[m]}</SelectItem>)}
               </SelectContent>
             </Select>
           )}
         />
       </Field>
-      <Field label="Vendor / payee" htmlFor="exp-vendor" error={errors.vendor?.message}>
-        <Input id="exp-vendor" placeholder="Optional" {...register("vendor")} />
+      <Field label="Payment reference" htmlFor="exp-ref" error={errors.paymentReference?.message}>
+        <Input id="exp-ref" placeholder="UPI / transaction ID / cheque no. (optional)" {...register("paymentReference")} />
       </Field>
-      <Field label="Paid from" htmlFor="exp-account">
-        <Controller
-          control={control}
-          name="accountId"
-          render={({ field }) => <AccountSelect id="exp-account" value={field.value ?? defaultAccount} onChange={field.onChange} />}
-        />
+      <Field label="Vendor / payee" htmlFor="exp-vendor" error={errors.vendor?.message} className="sm:col-span-2">
+        <Input id="exp-vendor" placeholder="Optional" {...register("vendor")} />
       </Field>
       <Field label="Notes" htmlFor="exp-notes" error={errors.notes?.message} className="sm:col-span-2">
         <Textarea id="exp-notes" rows={2} placeholder="Optional" {...register("notes")} />

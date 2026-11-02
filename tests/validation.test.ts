@@ -52,7 +52,7 @@ describe("sale form", () => {
 });
 
 describe("expense form", () => {
-  const base = { category: "repair", amountPaise: 5000, date: "2026-01-10", description: "Bumper", vendor: "", paymentMethod: "cash", vehicleId: "v1", notes: "" };
+  const base = { accountId: "acc-cash", category: "repair", amountPaise: 5000, date: "2026-01-10", description: "Bumper", vendor: "", paymentMethod: "cash", vehicleId: "v1", notes: "" };
   it("requires a vehicle for vehicle categories", () => {
     expect(expenseSchema.safeParse(base).success).toBe(true);
     expect(expenseSchema.safeParse({ ...base, vehicleId: null }).success).toBe(false);

@@ -31,6 +31,7 @@ import { PageHeader } from "@/components/shared/page-header";
 import { Field } from "@/components/shared/form-field";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { ShowroomLogo } from "@/components/shared/showroom-logo";
+import { BranchesSection } from "@/features/branches/branches-section";
 
 export function SettingsSection({ title, description, children, footer }: { title: string; description: string; children: React.ReactNode; footer?: React.ReactNode }) {
   return (
@@ -133,7 +134,7 @@ export function SettingsPage() {
                 <Select value={field.value} onValueChange={field.onChange}>
                   <SelectTrigger id="s-datefmt"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    {(["dd MMM yyyy", "dd/MM/yyyy", "yyyy-MM-dd"] as const).map((f) => (
+                    {(["dd MMM yyyy", "dd-MM-yyyy", "dd/MM/yyyy", "yyyy-MM-dd"] as const).map((f) => (
                       <SelectItem key={f} value={f}>{formatDate(todayISO(), f)}</SelectItem>
                     ))}
                   </SelectContent>
@@ -169,6 +170,7 @@ export function SettingsPage() {
       </form>
 
       <div className="mt-4 grid gap-4">
+        <BranchesSection />
         <StorageSection />
         <DataSection />
       </div>

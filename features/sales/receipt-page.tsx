@@ -26,10 +26,15 @@ export function ReceiptPage() {
   const vehicle = idx.vehicles.get(sale.vehicleId);
   const customer = idx.customers.get(sale.customerId);
   const salePayments = idx.paymentsBySale.get(sale.id) ?? [];
-  // Totals as at this receipt: payments up to and including this one.
-  const upto = salePayments.slice(0, salePayments.findIndex((p) => p.id === payment.id) + 1);
+  // Lines paid together (cash + UPI + loan…) share one receipt number and print on one receipt.
+  const lines = salePayments.filter((p) => p.receiptNumber === payment.receiptNumber);
+  const total = sumPaise(lines.map((p) => p.amountPaise));
+  // Totals as at this receipt: payments up to and including its last line.
+  const last = Math.max(...lines.map((l) => salePayments.findIndex((p) => p.id === l.id)));
+  const upto = salePayments.slice(0, last + 1);
   const receivedToDate = sumPaise(upto.map((p) => p.amountPaise));
   const balanceAfter = Math.max(0, sale.salePricePaise - receivedToDate);
+  const accountName = (id: string | null | undefined) => (id ? idx.accounts.get(id)?.name : undefined);
   const current = saleTotals(sale, salePayments);
   const s = ds.settings;
 
@@ -38,7 +43,7 @@ export function ReceiptPage() {
       <Letterhead title="Receipt">
         {payment.receiptNumber}
         <br />
-        {formatDate(payment.date, "dd MMM yyyy")}
+        {formatDate(payment.date, "dd-MM-yyyy")}
       </Letterhead>
 
       <p className="mt-10">
@@ -57,8 +62,14 @@ export function ReceiptPage() {
       <div className="mt-8">
         <AmountRows
           rows={[
-            { label: "Amount received", value: formatINR(payment.amountPaise), strong: true, note: paiseToWords(payment.amountPaise) },
-            { label: "Payment method", value: <>{PAYMENT_METHOD_LABELS[payment.method]}{payment.reference && `, ${payment.reference}`}</> },
+            { label: "Amount received", value: formatINR(total), strong: true, note: paiseToWords(total) },
+            ...lines.map((l) => ({
+              label:
+                l.method === "finance"
+                  ? `Loan from ${l.lenderName || "lender"}${l.loanReference ? `, ${l.loanReference}` : ""}`
+                  : `${PAYMENT_METHOD_LABELS[l.method]}${l.reference ? `, ${l.reference}` : ""}${accountName(l.accountId) ? ` → ${accountName(l.accountId)}` : ""}`,
+              value: formatINR(l.amountPaise),
+            })),
             { label: "Sale price", value: formatINR(sale.salePricePaise), gap: true },
             { label: "Paid so far", value: formatINR(receivedToDate) },
             { label: "Balance due", value: formatINR(balanceAfter), strong: true },

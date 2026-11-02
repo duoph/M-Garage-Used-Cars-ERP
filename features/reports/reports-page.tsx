@@ -29,6 +29,7 @@ import { DateRangePicker } from "@/components/shared/date-range-picker";
 import { EmptyState } from "@/components/shared/empty-state";
 import { BarChart3 } from "lucide-react";
 import { ExpenseBreakdownChart, ExpenseLegend } from "@/features/dashboard/charts";
+import { MoneyReportLinks } from "./money-reports";
 
 function Metric({ label, value, hint, tone }: { label: string; value: string; hint?: string; tone?: "pos" | "neg" }) {
   return (
@@ -78,6 +79,18 @@ export function ReportsPage() {
   return (
     <>
       <PageHeader title="Reports" description="Inventory, sales, purchasing, expenses and profitability." actions={<DateRangePicker value={range} onChange={setRange} />} />
+
+      {can("accounts.view") && (
+        <Card className="mb-4">
+          <CardHeader>
+            <div>
+              <CardTitle>Money reports</CardTitle>
+              <CardDescription>Sales, returns, purchases, cash, bank, payments and dues — with date range, branch filter and PDF / Excel export.</CardDescription>
+            </div>
+          </CardHeader>
+          <CardContent><MoneyReportLinks /></CardContent>
+        </Card>
+      )}
 
       {can("finance.viewProfit") && (
         <Card className="mb-4">

@@ -12,7 +12,8 @@ import { userSchema, type UserInput } from "@/lib/validation/schemas";
 import { ROLES, type Role, type User } from "@/types";
 import { ROLE_LABELS } from "@/lib/utils/labels";
 import { formatDate } from "@/lib/utils/dates";
-import { hasCustomAccess, PERMISSION_GROUPS, permissionsFor, ROLE_PERMISSIONS, type Permission } from "@/lib/permissions";
+import { hasCustomAccess, PERMISSION_GROUPS, permissionsFor, ROLE_PERMISSIONS, seesAllBranches, type Permission } from "@/lib/permissions";
+import { BranchSelect } from "@/features/branches/branch-select";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -314,8 +315,10 @@ function UserForm({ user, onDone }: { user: User | null; onDone: () => void }) {
           status: user.status,
           designation: user.designation ?? "",
           permissions: hasCustomAccess(user) ? ([...permissionsFor(user)] as Permission[]) : null,
+          branchId: user.branchId ?? ds.branches[0]?.id ?? null,
+          allBranches: user.allBranches ?? null,
         }
-      : { name: "", email: "", phone: "", role: "sales", status: "active", designation: "", permissions: null },
+      : { name: "", email: "", phone: "", role: "sales", status: "active", designation: "", permissions: null, branchId: me.branchId ?? ds.branches[0]?.id ?? null, allBranches: null },
   });
   const { errors, isSubmitting } = form.formState;
   const role = useWatch({ control: form.control, name: "role" });
@@ -383,6 +386,27 @@ function UserForm({ user, onDone }: { user: User | null; onDone: () => void }) {
                 <SelectContent>
                   <SelectItem value="active">Active</SelectItem>
                   <SelectItem value="inactive">Inactive</SelectItem>
+                </SelectContent>
+              </Select>
+            )} />
+          </Field>
+          <Field label="Branch" htmlFor="u-branch" hint="Records this person enters belong to this branch.">
+            <Controller control={form.control} name="branchId" render={({ field }) => (
+              <BranchSelect id="u-branch" value={field.value ?? ""} onChange={field.onChange} />
+            )} />
+          </Field>
+          <Field label="Branch access" htmlFor="u-branches" hint={role === "admin" ? "Admins always see every branch." : undefined}>
+            <Controller control={form.control} name="allBranches" render={({ field }) => (
+              <Select
+                value={field.value === null || field.value === undefined ? "default" : field.value ? "all" : "own"}
+                onValueChange={(v) => field.onChange(v === "default" ? null : v === "all")}
+                disabled={role === "admin"}
+              >
+                <SelectTrigger id="u-branches"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="default">Account type default ({seesAllBranches({ role, allBranches: null }) ? "all branches" : "own branch"})</SelectItem>
+                  <SelectItem value="all">All branches</SelectItem>
+                  <SelectItem value="own">Own branch only</SelectItem>
                 </SelectContent>
               </Select>
             )} />

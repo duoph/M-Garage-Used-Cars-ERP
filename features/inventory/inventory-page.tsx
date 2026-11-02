@@ -45,6 +45,7 @@ const STATUS_TABS: { value: InventoryFilters["status"]; label: string; dot?: str
   { value: "available", label: "Available", dot: "bg-success" },
   { value: "reserved", label: "Reserved", dot: "bg-warning" },
   { value: "sold", label: "Sold", dot: "bg-[#98a2b3]" },
+  { value: "returned_inspection", label: "Returned – Inspection", dot: "bg-[#2948b8]" },
 ];
 
 export function InventoryPage() {
@@ -57,7 +58,7 @@ export function InventoryPage() {
   // Deep links (e.g. from the dashboard's "To do" list) can preset status and sort.
   const [filters, setFilters] = React.useState<InventoryFilters>(() => ({
     ...DEFAULT_INVENTORY_FILTERS,
-    status: (["all", "in_stock", "available", "reserved", "sold"] as const).find((s) => s === params.get("status")) ?? "all",
+    status: (["all", "in_stock", "available", "reserved", "sold", "returned_inspection"] as const).find((s) => s === params.get("status")) ?? "all",
     sort: (Object.keys(SORT_LABELS) as InventorySort[]).find((s) => s === params.get("sort")) ?? "newest",
   }));
 
@@ -76,6 +77,8 @@ export function InventoryPage() {
     available: counts.available,
     reserved: counts.reserved,
     sold: counts.sold,
+    returned_inspection: ds.vehicles.filter((v) => !v.archivedAt && v.status === "returned_inspection").length,
+    returned_to_supplier: ds.vehicles.filter((v) => v.status === "returned_to_supplier").length,
   };
   const canCost = can("finance.viewCost");
   const filterKey = JSON.stringify(filters);

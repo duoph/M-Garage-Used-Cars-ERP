@@ -11,7 +11,7 @@ import { BusinessError } from "@/lib/repositories/contracts";
 import { reportError } from "@/hooks/use-commands";
 import { useCurrentUser } from "@/hooks/use-auth";
 import { paymentStatusFor } from "@/lib/calculations/finance";
-import { PAYMENT_METHODS } from "@/types";
+import type { PaymentMethod } from "@/types";
 import { FUEL_LABELS, PAYMENT_METHOD_LABELS, TRANSMISSION_LABELS, formatKm } from "@/lib/utils/labels";
 import { formatDate, todayISO } from "@/lib/utils/dates";
 import { formatINR } from "@/lib/utils/money";
@@ -21,7 +21,6 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { PageHeader } from "@/components/shared/page-header";
 import { Field } from "@/components/shared/form-field";
 import { CurrencyInput } from "@/components/shared/currency-input";
@@ -31,6 +30,11 @@ import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { useUnsavedGuard } from "@/hooks/use-unsaved-guard";
 import { VehicleDetailsFields } from "@/features/inventory/vehicle-fields";
 import { MultiImageUploader, toPreparedPhotos, type PendingPhoto } from "@/features/inventory/photos/multi-image-uploader";
+import { PaymentLinesEditor, sumLines } from "@/features/accounts/payment-lines";
+import { BranchSelect, useMyBranches } from "@/features/branches/branch-select";
+
+/** Modes a seller can be paid in (no loans). */
+export const PURCHASE_PAYMENT_METHODS: readonly PaymentMethod[] = ["cash", "upi", "bank_transfer", "cheque", "card"];
 
 const STEPS = [
   { key: "vehicle", label: "Vehicle details", short: "Car", hint: "Make, registration, kilometres and colour." },
@@ -43,7 +47,7 @@ const STEPS = [
 const STEP_FIELDS: FieldPath<PurchaseFormInput>[][] = [
   ["make", "model", "variant", "year", "registrationNumber", "chassisNumber", "engineNumber", "fuelType", "transmission", "mileageKm", "color", "previousOwners", "notes"],
   ["sellerName", "sellerContact", "sellerAddress", "sellerNotes"],
-  ["purchaseDate", "purchasePricePaise", "amountPaidPaise", "askingPricePaise", "paymentMethod", "paymentReference", "purchaseNotes"],
+  ["purchaseDate", "purchasePricePaise", "payments", "askingPricePaise", "branchId", "purchaseNotes"],
   [],
   [],
 ];
@@ -84,8 +88,11 @@ export function NewPurchasePage() {
       paymentMethod: "bank_transfer",
       paymentReference: "",
       purchaseNotes: "",
+      payments: [],
+      branchId: user.branchId ?? null,
     },
   });
+  const branches = useMyBranches();
   const { errors, isDirty } = form.formState;
   const [leaving, setLeaving] = React.useState(false);
   const dirty = (isDirty || photos.length > 0) && !saving;
@@ -134,7 +141,8 @@ export function NewPurchasePage() {
   }
 
   const v = useWatch({ control: form.control }) as PurchaseFormInput;
-  const status = paymentStatusFor(v.purchasePricePaise ?? 0, v.amountPaidPaise ?? 0);
+  const paid = sumLines(v.payments);
+  const status = paymentStatusFor(v.purchasePricePaise ?? 0, paid);
 
   return (
     <div ref={topRef} className="scroll-mt-20">
@@ -241,27 +249,32 @@ export function NewPurchasePage() {
                   <CurrencyInput id="np-price" value={field.value} onChange={(x) => field.onChange(x ?? undefined)} onBlur={field.onBlur} invalid={!!errors.purchasePricePaise} />
                 )} />
               </Field>
-              <Field label="Amount paid to seller" htmlFor="np-paid" error={errors.amountPaidPaise?.message} required hint={<span className="flex items-center gap-1.5">Status: <PaymentStatusBadge status={status} /></span>}>
-                <Controller control={form.control} name="amountPaidPaise" render={({ field }) => (
-                  <CurrencyInput id="np-paid" value={field.value} onChange={(x) => field.onChange(x ?? 0)} onBlur={field.onBlur} invalid={!!errors.amountPaidPaise} />
-                )} />
-              </Field>
               <Field label="Asking price (listing)" htmlFor="np-asking" error={errors.askingPricePaise?.message} required hint="Price shown to sales staff and buyers">
                 <Controller control={form.control} name="askingPricePaise" render={({ field }) => (
                   <CurrencyInput id="np-asking" value={field.value} onChange={(x) => field.onChange(x ?? undefined)} onBlur={field.onBlur} invalid={!!errors.askingPricePaise} />
                 )} />
               </Field>
-              <Field label="Payment method" htmlFor="np-method" error={errors.paymentMethod?.message}>
-                <Controller control={form.control} name="paymentMethod" render={({ field }) => (
-                  <Select value={field.value} onValueChange={field.onChange}>
-                    <SelectTrigger id="np-method"><SelectValue /></SelectTrigger>
-                    <SelectContent>{PAYMENT_METHODS.map((m) => <SelectItem key={m} value={m}>{PAYMENT_METHOD_LABELS[m]}</SelectItem>)}</SelectContent>
-                  </Select>
-                )} />
-              </Field>
-              <Field label="Payment reference" htmlFor="np-pref" error={errors.paymentReference?.message}>
-                <Input id="np-pref" placeholder="UTR / cheque no. (optional)" {...form.register("paymentReference")} />
-              </Field>
+              {branches.length > 1 && (
+                <Field label="Branch" htmlFor="np-branch" hint="The car is stocked here; cash paid comes out of this branch's cash in hand.">
+                  <Controller control={form.control} name="branchId" render={({ field }) => (
+                    <BranchSelect id="np-branch" value={field.value ?? ""} onChange={field.onChange} />
+                  )} />
+                </Field>
+              )}
+              <div className="sm:col-span-2">
+                <h3 className="mb-1 flex items-center gap-2 text-[13px] font-medium">Paid to seller <PaymentStatusBadge status={status} /></h3>
+                <p className="mb-3 text-xs text-muted-foreground">Which cash or bank account each payment came out of. Anything not paid yet stays as owed to the seller.</p>
+                <PaymentLinesEditor
+                  control={form.control}
+                  name="payments"
+                  errors={errors}
+                  methods={PURCHASE_PAYMENT_METHODS}
+                  branchId={v.branchId}
+                  totalPaise={v.purchasePricePaise ?? 0}
+                  idPrefix="np-pay"
+                  labels={{ total: "Purchase price", paid: "Paid now", balance: "Owed to seller", account: "Paid from" }}
+                />
+              </div>
               <Field label="Purchase notes" htmlFor="np-pnotes" error={errors.purchaseNotes?.message} className="sm:col-span-2">
                 <Textarea id="np-pnotes" rows={2} placeholder="Optional — e.g. documents pending, loan closure" {...form.register("purchaseNotes")} />
               </Field>
@@ -361,10 +374,10 @@ function Review({ values: v, photos, onEdit, status }: { values: PurchaseFormInp
       <ReviewSection onEdit={onEdit} title="Purchase" step={2} rows={[
         ["Purchase date", formatDate(v.purchaseDate)],
         ["Purchase price", v.purchasePricePaise != null ? formatINR(v.purchasePricePaise) : ""],
-        ["Amount paid", formatINR(v.amountPaidPaise ?? 0)],
+        ["Amount paid", formatINR(sumLines(v.payments))],
         ["Payment status", <PaymentStatusBadge key="s" status={status} />],
         ["Asking price", v.askingPricePaise != null ? formatINR(v.askingPricePaise) : ""],
-        ["Payment method", PAYMENT_METHOD_LABELS[v.paymentMethod]],
+        ...(v.payments ?? []).map((l, i): [string, React.ReactNode] => [`Payment ${i + 1}`, `${formatINR(l.amountPaise ?? 0)} · ${PAYMENT_METHOD_LABELS[l.method]}`]),
       ]} />
       <section className="rounded-lg border">
         <div className="flex items-center justify-between border-b bg-[#fafbfc] px-4 py-2.5">
