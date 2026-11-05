@@ -2,12 +2,15 @@
 import * as React from "react";
 import { Controller, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { BadgeCheck, Info, MoreHorizontal, Pencil, Plus, Power, SearchX, ShieldCheck, Users, X } from "lucide-react";
+import { BadgeCheck, Eye, EyeOff, Info, MoreHorizontal, Pencil, Plus, Power, SearchX, ShieldCheck, Users, X } from "lucide-react";
 import { toast } from "sonner";
 import { useData } from "@/components/providers/data-provider";
 import { useCurrentUser } from "@/hooks/use-auth";
 import { dealerService } from "@/lib/services/dealer-service";
+import { supabaseConfigured } from "@/lib/supabase/env";
+import { addStaff, updateStaff, type SignInSetup } from "./staff-accounts";
 import { reportError } from "@/hooks/use-commands";
+import { BusinessError } from "@/lib/repositories/contracts";
 import { userSchema, type UserInput } from "@/lib/validation/schemas";
 import { ROLES, type Role, type User } from "@/types";
 import { ROLE_LABELS } from "@/lib/utils/labels";
@@ -61,10 +64,17 @@ export function StaffPage() {
       <PageHeader title="Staff & Users" description="Employee accounts, account types, designations and access." actions={<Button onClick={() => setEditing("new")}><Plus /> Add user</Button>} />
       <div className="mb-4 flex gap-2.5 rounded-lg border border-[#d1e0ff] bg-[#eff4ff] p-3 text-[13px] text-[#1d3a8a]">
         <Info className="mt-0.5 size-4 shrink-0" />
-        <p>
-          <strong className="font-semibold">No passwords yet.</strong> Accounts here act as sign-in profiles only. When the backend is
-          connected, invitations, passwords and sessions will be handled securely on the server.
-        </p>
+        {supabaseConfigured ? (
+          <p>
+            <strong className="font-semibold">Secure sign-in is on.</strong> Each person signs in with their own email and password. Set a
+            password when you add someone, or email them an invite. Deactivated staff can&apos;t sign in.
+          </p>
+        ) : (
+          <p>
+            <strong className="font-semibold">Local mode.</strong> Supabase isn&apos;t configured, so accounts here are sign-in profiles
+            without passwords.
+          </p>
+        )}
       </div>
       <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {ROLES.map((r) => (
@@ -161,13 +171,16 @@ export function StaffPage() {
         onConfirm={async () => {
           if (!toggling) return;
           try {
-            await dealerService.updateUser(me, toggling.id, {
+            await updateStaff(me, toggling.id, {
               name: toggling.name,
               email: toggling.email,
               phone: toggling.phone,
               role: toggling.role,
               designation: toggling.designation ?? "",
               status: toggling.status === "active" ? "inactive" : "active",
+              permissions: (toggling.permissions ?? null) as Permission[] | null,
+              branchId: toggling.branchId ?? null,
+              allBranches: toggling.allBranches ?? null,
             });
             toast.success(toggling.status === "active" ? "User deactivated" : "User reactivated");
           } catch (e) {
@@ -323,15 +336,35 @@ function UserForm({ user, onDone }: { user: User | null; onDone: () => void }) {
   const { errors, isSubmitting } = form.formState;
   const role = useWatch({ control: form.control, name: "role" });
   const isSelf = user?.id === me.id;
+  // Sign-in details stay out of the profile form: they go to Supabase only and are never stored locally.
+  const [signInMode, setSignInMode] = React.useState<SignInSetup["mode"]>("password");
+  const [password, setPassword] = React.useState("");
+  const [passwordError, setPasswordError] = React.useState<string | null>(null);
 
   async function onSubmit(values: UserInput) {
+    setPasswordError(null);
+    const needsPassword = supabaseConfigured && (user ? password.length > 0 : signInMode === "password");
+    if (needsPassword && password.length < 8) {
+      setPasswordError("Use at least 8 characters.");
+      return;
+    }
     try {
-      if (user) await dealerService.updateUser(me, user.id, values);
-      else await dealerService.createUser(me, values);
-      toast.success(user ? "User updated" : `${values.name} added`);
+      if (user) {
+        await updateStaff(me, user.id, values, password || undefined);
+        toast.success(password ? "User updated and password changed" : "User updated");
+      } else {
+        const setup: SignInSetup = signInMode === "password" ? { mode: "password", password } : { mode: "invite" };
+        const { invited } = await addStaff(me, values, supabaseConfigured ? setup : null);
+        toast.success(invited ? `${values.name} added. Invite sent to ${values.email}` : `${values.name} added`, {
+          description: !invited && supabaseConfigured ? "Share the password with them so they can sign in." : undefined,
+        });
+      }
       onDone();
     } catch (e) {
-      reportError(e);
+      const field = e instanceof BusinessError ? e.field : undefined;
+      if (field === "password" || field === "newPassword") setPasswordError((e as Error).message);
+      else if (field === "email") form.setError("email", { message: (e as Error).message });
+      else reportError(e);
     }
   }
 
@@ -411,6 +444,19 @@ function UserForm({ user, onDone }: { user: User | null; onDone: () => void }) {
               </Select>
             )} />
           </Field>
+          {supabaseConfigured && (
+            <SignInFields
+              isNew={!user}
+              mode={signInMode}
+              onModeChange={(m) => {
+                setSignInMode(m);
+                setPasswordError(null);
+              }}
+              password={password}
+              onPasswordChange={setPassword}
+              error={passwordError}
+            />
+          )}
           <div className="grid gap-1.5 sm:col-span-2">
             <span className="text-[13px] font-medium">Access</span>
             <Controller control={form.control} name="permissions" render={({ field }) => (
@@ -424,5 +470,90 @@ function UserForm({ user, onDone }: { user: User | null; onDone: () => void }) {
         </DialogFooter>
       </form>
     </DialogContent>
+  );
+}
+
+/** Sign-in setup for a new person (password or invite), or an optional password reset when editing. */
+function SignInFields({
+  isNew,
+  mode,
+  onModeChange,
+  password,
+  onPasswordChange,
+  error,
+}: {
+  isNew: boolean;
+  mode: SignInSetup["mode"];
+  onModeChange: (m: SignInSetup["mode"]) => void;
+  password: string;
+  onPasswordChange: (v: string) => void;
+  error: string | null;
+}) {
+  const [visible, setVisible] = React.useState(false);
+  const showPassword = !isNew || mode === "password";
+  const options = [
+    { value: "password", title: "Set a password now", hint: "You share the password with them." },
+    { value: "invite", title: "Email an invite", hint: "They choose their own password." },
+  ] as const;
+  return (
+    <div className="grid gap-3 rounded-lg border bg-muted/30 p-3 sm:col-span-2">
+      <div>
+        <span className="text-[13px] font-medium">Sign-in</span>
+        <p className="mt-0.5 text-xs text-muted-foreground">
+          {isNew ? "How this person will sign in to the app." : "Leave blank to keep their current password."}
+        </p>
+      </div>
+      {isNew && (
+        <div className="grid gap-2 sm:grid-cols-2" role="radiogroup" aria-label="Sign-in setup">
+          {options.map((o) => (
+            <label
+              key={o.value}
+              className={cn(
+                "flex cursor-pointer gap-2.5 rounded-md border bg-card p-2.5 text-left transition-colors",
+                mode === o.value ? "border-primary ring-1 ring-primary/30" : "hover:border-primary/30",
+              )}
+            >
+              <input type="radio" name="signin-mode" value={o.value} checked={mode === o.value} onChange={() => onModeChange(o.value)} className="mt-0.5 accent-primary" />
+              <span>
+                <span className="block text-[13px] font-medium">{o.title}</span>
+                <span className="block text-xs text-muted-foreground">{o.hint}</span>
+              </span>
+            </label>
+          ))}
+        </div>
+      )}
+      {showPassword && (
+        <Field label={isNew ? "Password" : "New password"} htmlFor="u-password" error={error ?? undefined} required={isNew} hint={error ? undefined : "At least 8 characters."}>
+          <div className="relative">
+            <Input
+              id="u-password"
+              type={visible ? "text" : "password"}
+              autoComplete="new-password"
+              value={password}
+              onChange={(e) => onPasswordChange(e.target.value)}
+              aria-invalid={!!error}
+              className="pr-10"
+            />
+            <button
+              type="button"
+              onClick={() => setVisible((v) => !v)}
+              className="absolute inset-y-0 right-0 flex w-9 items-center justify-center text-muted-foreground hover:text-foreground"
+              aria-label={visible ? "Hide password" : "Show password"}
+            >
+              {visible ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+            </button>
+          </div>
+        </Field>
+      )}
+      {isNew && mode === "invite" && (
+        <p className="text-xs text-muted-foreground">
+          {error ? (
+            <span className="text-destructive">{error}</span>
+          ) : (
+            "They'll get an email with a link to set their password. Supabase's built-in email sends only a few invites per hour."
+          )}
+        </p>
+      )}
+    </div>
   );
 }

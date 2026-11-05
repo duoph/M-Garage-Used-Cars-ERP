@@ -115,6 +115,15 @@ export function hasCustomAccess(user: Pick<User, "role" | "permissions">): boole
   return user.role !== "admin" && !!user.permissions;
 }
 
+/** A custom access list as stored: null when it matches the account type's defaults (and always for admins). */
+export function normalizeAccess(role: Role, permissions: readonly Permission[] | null | undefined): Permission[] | null {
+  if (role === "admin" || !permissions) return null;
+  const defaults = ROLE_PERMISSIONS[role];
+  const unique = [...new Set(permissions)];
+  if (unique.length === defaults.size && unique.every((p) => defaults.has(p))) return null;
+  return unique;
+}
+
 export function can(subject: PermissionSubject, permission: Permission): boolean {
   return permissionsFor(subject).has(permission);
 }

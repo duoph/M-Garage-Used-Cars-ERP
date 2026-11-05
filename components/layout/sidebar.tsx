@@ -10,7 +10,7 @@ import { ROLE_LABELS } from "@/lib/utils/labels";
 import { useAuth } from "@/hooks/use-auth";
 import { useData } from "@/components/providers/data-provider";
 import { useUiStore } from "@/lib/store/ui";
-import { useSessionStore } from "@/lib/store/session";
+import { signOutEverywhere } from "@/features/auth/supabase-auth";
 import { ShowroomLogo } from "@/components/shared/showroom-logo";
 import { UserAvatar } from "@/components/shared/user-avatar";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -153,11 +153,10 @@ export function SidebarNav({ collapsed = false, mobile = false, onNavigate }: { 
 function UserCard({ collapsed, mobile }: { collapsed: boolean; mobile: boolean }) {
   const { user } = useAuth();
   const router = useRouter();
-  const signOut = useSessionStore((s) => s.signOut);
   if (!user) return null;
   const subtitle = user.designation || ROLE_LABELS[user.role];
   const logOut = () => {
-    signOut();
+    void signOutEverywhere();
     router.replace("/login");
   };
 

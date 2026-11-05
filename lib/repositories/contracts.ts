@@ -119,7 +119,8 @@ export interface DealerCommands {
   uploadDocument(actor: User, meta: DocumentMetaInput, file: Blob, fileName: string): Promise<ID>;
   removeDocument(actor: User, documentId: ID): Promise<void>;
 
-  createUser(actor: User, input: UserInput): Promise<ID>;
+  /** `id` lets the caller choose the id, e.g. to match a profile already created in Supabase. */
+  createUser(actor: User, input: UserInput, id?: ID): Promise<ID>;
   updateUser(actor: User, userId: ID, input: UserInput): Promise<void>;
 
   updateSettings(actor: User, input: SettingsInput): Promise<void>;

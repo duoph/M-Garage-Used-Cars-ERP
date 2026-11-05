@@ -1,6 +1,6 @@
 import type { DealerDatabase } from "@/lib/db/database";
 import { getDb } from "@/lib/db/database";
-import { branchScope, can, permissionsFor, ROLE_PERMISSIONS, type Permission } from "@/lib/permissions";
+import { branchScope, can, normalizeAccess, permissionsFor, type Permission } from "@/lib/permissions";
 import {
   BusinessError,
   type CreatePurchaseResult,
@@ -82,7 +82,6 @@ import type {
   Reservation,
   Sale,
   SalePayment,
-  Role,
   StoredDocument,
   User,
   Vehicle,
@@ -402,14 +401,6 @@ async function documentOwner(db: Db, type: StoredDocument["ownerType"], id: ID):
 }
 
 /** Admin accounts always have full access, and a list identical to the defaults is stored as "defaults". */
-function normalizeAccess(role: Role, permissions: readonly Permission[] | null | undefined): Permission[] | null {
-  if (role === "admin" || !permissions) return null;
-  const defaults = ROLE_PERMISSIONS[role];
-  const unique = [...new Set(permissions)];
-  if (unique.length === defaults.size && unique.every((p) => defaults.has(p))) return null;
-  return unique;
-}
-
 async function getOrThrow<T>(promise: Promise<T | undefined>, what: string): Promise<T> {
   const v = await promise;
   if (!v) throw new BusinessError(`${what} could not be found.`);
@@ -1770,7 +1761,7 @@ export function createDealerService(
       if (remote) await remote.remove([removed.storageKey]).catch((e) => console.error("Could not delete document from R2", e));
     },
 
-    async createUser(actor, rawInput) {
+    async createUser(actor, rawInput, id) {
       authorize(actor, "users.manage");
       const input = parse(userSchema, rawInput);
       const d = db();
@@ -1779,7 +1770,7 @@ export function createDealerService(
         if (clash) throw new BusinessError("A user with this email already exists.", "email");
         const ts = now();
         const user: User = {
-          id: newId(),
+          id: id ?? newId(),
           ...input,
           designation: input.designation ?? "",
           permissions: normalizeAccess(input.role, input.permissions),

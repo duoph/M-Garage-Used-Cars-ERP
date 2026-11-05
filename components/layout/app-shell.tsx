@@ -5,6 +5,9 @@ import { cn } from "@/lib/utils/cn";
 import { useAuth } from "@/hooks/use-auth";
 import { useHydrated } from "@/hooks/use-hydrated";
 import { useUiStore } from "@/lib/store/ui";
+import { useSessionStore } from "@/lib/store/session";
+import { supabaseConfigured } from "@/lib/supabase/env";
+import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 import { canAccessPath } from "@/lib/permissions";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { Dialog as P } from "radix-ui";
@@ -25,6 +28,31 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const setMobileNavOpen = useUiStore((s) => s.setMobileNavOpen);
   // Session lives in localStorage; wait for the client before deciding to redirect.
   const hydrated = useHydrated();
+  const authUserId = useSessionStore((s) => s.authUserId);
+  // With Supabase, the live Supabase session must belong to the profile this browser remembers.
+  const [authChecked, setAuthChecked] = React.useState(!supabaseConfigured);
+
+  React.useEffect(() => {
+    if (!supabaseConfigured || !hydrated) return;
+    const supabase = getSupabaseBrowserClient();
+    let cancelled = false;
+    const reject = () => {
+      useSessionStore.getState().signOut();
+      router.replace("/login");
+    };
+    supabase.auth.getSession().then(({ data }) => {
+      if (cancelled) return;
+      if (!data.session || data.session.user.id !== authUserId) reject();
+      else setAuthChecked(true);
+    });
+    const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === "SIGNED_OUT" || (session && session.user.id !== authUserId)) reject();
+    });
+    return () => {
+      cancelled = true;
+      sub.subscription.unsubscribe();
+    };
+  }, [hydrated, authUserId, router]);
 
   React.useEffect(() => {
     if (hydrated && !user) router.replace("/login");
@@ -32,7 +60,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   React.useEffect(() => setMobileNavOpen(false), [pathname, setMobileNavOpen]);
 
-  if (!hydrated || !user) return <BootScreen />;
+  if (!hydrated || !user || !authChecked) return <BootScreen />;
 
   return (
     <div className="min-h-dvh">
@@ -53,7 +81,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
         </main>
         <footer className="no-print px-4 py-3 text-center text-[11px] text-muted-foreground/70 sm:px-6">
-          Local mode · data stays in this browser
+          {supabaseConfigured ? "Signed in with Supabase · records are still saved in this browser" : "Local mode · data stays in this browser"}
         </footer>
       </div>
       <GlobalSearch />
